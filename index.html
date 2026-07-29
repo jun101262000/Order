@@ -20,7 +20,7 @@
         @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&display=swap');
         body { 
             font-family: 'Noto Sans TC', sans-serif; 
-            font-size: 16px; /* 基礎字體縮小以適應手機，依賴 Tailwind 的 text- 類別放大 */
+            font-size: 16px;
             line-height: 1.4;
             -webkit-text-size-adjust: 100%;
             padding-bottom: 240px;
@@ -94,7 +94,7 @@
             padding-top: 20px;
         }
 
-        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 10px; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
 
@@ -439,15 +439,42 @@
                 }
             };
 
+            // 【核心修改】截圖時強制在背景虛擬出 800px 平板寬度，保留高畫質排版
             const handleScreenshot = async () => {
                 const element = document.getElementById('capture-target');
                 if (!element) return;
                 const btn = document.getElementById('btn-screenshot');
                 const originalText = btn.innerHTML;
                 btn.innerText = "生成中..."; btn.disabled = true;
+                
                 try {
                     await new Promise(resolve => setTimeout(resolve, 300));
-                    const canvas = await html2canvas(element, { scale: 2, useCORS: true, backgroundColor: '#ffffff', logging: false });
+                    
+                    const canvas = await html2canvas(element, { 
+                        scale: 2, 
+                        useCORS: true, 
+                        backgroundColor: '#ffffff', 
+                        logging: false,
+                        windowWidth: 800, // 告訴 Tailwind 我們現在是 800px 寬，觸發 md: 樣式
+                        width: 800,       // 強制產出圖片寬度為 800px
+                        onclone: (clonedDoc) => {
+                            // 在背景複製的 DOM 樹中，強制移除響應式限制，鎖死 800px
+                            const target = clonedDoc.getElementById('capture-target');
+                            if (target) {
+                                target.style.width = '800px';
+                                target.style.minWidth = '800px';
+                                target.style.maxWidth = '800px';
+                            }
+                            const container = clonedDoc.getElementById('preview-container');
+                            if (container) {
+                                container.style.width = '800px';
+                                container.style.minWidth = '800px';
+                                container.style.maxWidth = 'none';
+                                container.style.overflow = 'visible'; // 防止內容被截斷
+                            }
+                        }
+                    });
+                    
                     const imgData = canvas.toDataURL("image/png");
                     const displayName = orderer.isHandwritten ? '手寫單' : orderer.name;
                     if (navigator.share) {
@@ -456,8 +483,11 @@
                             try { await navigator.share({ files: [file], title: '葳葳海鮮訂單', text: `這是 ${displayName} 的訂單` }); } catch (err) { setScreenshotUrl(imgData); }
                         }, 'image/png');
                     } else { setScreenshotUrl(imgData); }
-                } catch (error) { setSysMsg({ type: 'error', title: '生成失敗', text: '處理圖片時發生錯誤，請稍後再試。' }); } 
-                finally { btn.innerHTML = originalText; btn.disabled = false; }
+                } catch (error) { 
+                    setSysMsg({ type: 'error', title: '生成失敗', text: '處理圖片時發生錯誤，請稍後再試。' }); 
+                } finally { 
+                    btn.innerHTML = originalText; btn.disabled = false; 
+                }
             };
 
             const handleThermalPrint = async () => {
@@ -490,7 +520,6 @@
                 finally { btn.innerHTML = originalText; btn.disabled = false; }
             };
 
-            // 動態計算 footer 表格跨行的數量 (當有折讓時多顯示一列)
             const footerRowCount = summary.actualDisc > 0 ? 4 : 3; 
 
             return (
@@ -510,7 +539,6 @@
                                 )}
                                 <h3 className="text-2xl md:text-3xl font-black text-slate-800 mb-2">{sysMsg.title}</h3>
                                 <p className="text-sm md:text-base text-slate-500 font-bold mb-6 leading-relaxed">{sysMsg.text}</p>
-                                {/* ... 提示視窗細節 ... */}
                                 <button onClick={() => setSysMsg(null)} className="w-full py-3 md:py-4 rounded-xl font-black text-xl md:text-2xl bg-slate-900 text-white shadow-lg active:scale-95 transition-transform">
                                     確認
                                 </button>
@@ -913,130 +941,137 @@
                             </section>
                         </div>
                     ) : (
-                        <div className="w-full max-w-2xl bg-white min-h-screen md:min-h-0 md:rounded-[2rem] shadow-2xl overflow-hidden print-container animate-in zoom-in-95 duration-300">
-                            <div id="capture-target" className="bg-white">
-                                <div className="bg-slate-900 p-6 md:p-10 text-white flex justify-between items-end">
-                                    <div>
-                                        <h2 className="text-3xl md:text-5xl font-black leading-none mb-1 md:mb-2">葳葳海鮮</h2>
-                                        <p className="text-slate-400 font-bold tracking-widest text-xs md:text-lg uppercase">Order Confirmation</p>
-                                    </div>
-                                    <div className="text-right text-xs md:text-base text-slate-500 font-bold">
-                                        {new Date().toLocaleString('zh-TW')}
-                                    </div>
-                                </div>
-
-                                <div className="p-4 md:p-8 space-y-6 md:space-y-8">
-                                    <div className="flex flex-col items-center justify-center border-b-2 md:border-b-4 border-slate-200 pb-6 md:pb-8 text-center">
-                                        <p className="text-xs md:text-sm font-black text-slate-400 uppercase mb-1 md:mb-2 tracking-widest">客戶資訊</p>
-                                        <div className="flex flex-wrap items-baseline justify-center gap-2 md:gap-4">
-                                            {orderer.isHandwritten ? (
-                                                <span className="font-black text-black text-3xl md:text-5xl tracking-widest px-6 md:px-8 border-b-2 md:border-b-4 border-black h-[40px] md:h-[60px] inline-block mb-2"></span>
-                                            ) : (
-                                                <span className="font-black text-black text-3xl md:text-5xl">{orderer.name}</span>
-                                            )}
-                                            {orderer.phone && <span className="font-black text-black text-xl md:text-3xl">{orderer.phone}</span>}
+                        <div className="w-full flex justify-center pb-24 md:pb-20">
+                            {/* preview-container 就是我們在截圖時要介入覆寫的目標 */}
+                            <div id="preview-container" className="w-full max-w-3xl bg-white min-h-screen md:min-h-0 md:rounded-[2rem] shadow-2xl overflow-hidden print-container animate-in zoom-in-95 duration-300">
+                                
+                                {/* 這裡預設是 w-full (響應式)，截圖時會在背景強制鎖定成 800px */}
+                                <div id="capture-target" className="bg-white w-full">
+                                    
+                                    <div className="bg-slate-900 p-6 md:p-10 text-white flex justify-between items-end">
+                                        <div>
+                                            <h2 className="text-3xl md:text-5xl font-black leading-none mb-1 md:mb-2">葳葳海鮮</h2>
+                                            <p className="text-slate-400 font-bold tracking-widest text-[10px] md:text-lg uppercase">Order Confirmation</p>
                                         </div>
-                                        {orderer.address && (
-                                            <div className="mt-2 md:mt-4 font-bold text-slate-700 text-lg md:text-2xl">{orderer.address}</div>
-                                        )}
-                                        {paymentStatus === 'paid' && (
-                                            <span className="mt-3 md:mt-4 bg-emerald-100 text-emerald-800 px-4 md:px-6 py-1.5 md:py-2 rounded-full text-base md:text-xl font-black border-2 border-emerald-200 tracking-tight flex items-center justify-center gap-1.5 md:gap-2 max-w-fit mx-auto">
-                                                <Icons.CheckCircle /> 已付款
-                                            </span>
-                                        )}
-                                        {paymentStatus === 'credit' && (
-                                            <span className="mt-3 md:mt-4 bg-indigo-100 text-indigo-800 px-4 md:px-6 py-1.5 md:py-2 rounded-full text-base md:text-xl font-black border-2 border-indigo-200 tracking-tight flex items-center justify-center gap-1.5 md:gap-2 max-w-fit mx-auto">
-                                                <Icons.CreditCard /> 本次剩餘 ${creditAmount}
-                                            </span>
-                                        )}
+                                        <div className="text-right text-[10px] md:text-base text-slate-500 font-bold">
+                                            {new Date().toLocaleString('zh-TW')}
+                                        </div>
                                     </div>
 
-                                    <div className="overflow-x-auto w-full pb-4">
-                                        <table className="w-full text-lg md:text-3xl order-table border-collapse min-w-[320px]">
-                                            <thead>
-                                                <tr className="border-b-2 md:border-b-4 border-slate-300 text-black font-black uppercase text-sm md:text-2xl">
-                                                    <th className="text-right py-2 md:py-3 w-1/2">品項</th>
-                                                    <th className="text-center w-[15%] whitespace-nowrap">單價</th>
-                                                    <th className="text-center w-[10%] whitespace-nowrap">數量</th>
-                                                    <th className="text-left pl-3 md:pl-6 w-[25%] whitespace-nowrap">小計</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {summary.items.map((i, idx) => (
-                                                    <tr key={idx} className="text-black even-row even:bg-slate-100 border-b border-slate-200">
-                                                        <td className="text-right py-3 md:py-5 pr-2 md:pr-3 leading-tight font-normal">
-                                                            {i.name}
-                                                            {i.type === '一般' && jinPrices[i.id] !== undefined && <span className="ml-1 md:ml-2 text-sm md:text-2xl text-slate-500 font-bold whitespace-nowrap">(${jinPrices[i.id]}/斤)</span>}
-                                                            {i.type === '分享' && <span className="ml-1 md:ml-2 text-[10px] md:text-sm bg-emerald-100 text-emerald-800 px-1 md:px-2 py-0.5 md:py-1 rounded border border-emerald-300 inline-block font-bold">分享</span>}
-                                                            {i.type === '限定' && <span className="ml-1 md:ml-2 text-[10px] md:text-sm bg-sky-100 text-sky-800 px-1 md:px-2 py-0.5 md:py-1 rounded border border-sky-300 inline-block font-bold">限定</span>}
-                                                        </td>
-                                                        <td className="text-center text-black px-1 md:px-2 font-normal whitespace-nowrap">${i.price}</td>
-                                                        <td className="text-center px-1 md:px-2 font-normal whitespace-nowrap">x{i.qty}</td>
-                                                        <td className="text-left pl-3 md:pl-6 text-black font-normal whitespace-nowrap">${i.total}</td>
-                                                    </tr>
-                                                ))}
-                                            </tbody>
-                                            <tfoot className="border-t-4 md:border-t-8 border-slate-300 bg-white">
-                                                <tr className="text-sm md:text-lg font-bold text-slate-500">
-                                                    <td rowSpan={footerRowCount} colSpan="2" className="p-3 md:p-6 align-bottom border-r-2 md:border-r-4 border-slate-100">
-                                                        <div className="text-slate-900 space-y-1 md:space-y-3 text-left">
-                                                            <p className="text-xs md:text-base font-black text-slate-400 tracking-widest border-b border-slate-200 pb-1 mb-1 md:mb-2 inline-block">匯款與聯絡資訊</p>
-                                                            <p className="text-lg md:text-3xl font-black leading-tight text-indigo-950">郵局(700) <br/><span className="text-xl md:text-5xl">0191289-0858464</span></p>
-                                                            <p className="text-lg md:text-3xl font-black leading-tight mt-1 md:mt-2 text-indigo-950">吳庭葳</p>
-                                                            <p className="text-xl md:text-4xl font-black leading-tight text-indigo-950">0910-745-919</p>
-                                                        </div>
-                                                    </td>
-                                                    <td className="pt-4 md:pt-8 text-center whitespace-nowrap text-sm md:text-xl font-bold">商品總計</td>
-                                                    <td className="pt-4 md:pt-8 text-left pl-3 md:pl-6 text-black font-black whitespace-nowrap text-lg md:text-3xl">${summary.subtotal}</td>
-                                                </tr>
-                                                <tr className="text-sm md:text-lg font-bold text-slate-500">
-                                                    <td className="text-center whitespace-nowrap pt-1 md:pt-2">運費金額</td>
-                                                    <td className="text-left pl-3 md:pl-6 text-black font-black whitespace-nowrap text-lg md:text-3xl pt-1 md:pt-2">+{summary.actualShip}</td>
-                                                </tr>
-                                                {summary.actualDisc > 0 && (
-                                                    <tr className="text-sm md:text-lg font-bold text-amber-500">
-                                                        <td className="text-center whitespace-nowrap pt-1 md:pt-2">折讓優惠</td>
-                                                        <td className="text-left pl-3 md:pl-6 font-black whitespace-nowrap text-lg md:text-3xl pt-1 md:pt-2">-{summary.actualDisc}</td>
-                                                    </tr>
+                                    <div className="p-4 md:p-8 space-y-6 md:space-y-8">
+                                        <div className="flex flex-col items-center justify-center border-b-2 md:border-b-4 border-slate-200 pb-6 md:pb-8 text-center">
+                                            <p className="text-xs md:text-sm font-black text-slate-400 uppercase mb-1 md:mb-2 tracking-widest">客戶資訊</p>
+                                            <div className="flex flex-wrap items-baseline justify-center gap-2 md:gap-4">
+                                                {orderer.isHandwritten ? (
+                                                    <span className="font-black text-black text-3xl md:text-5xl tracking-widest px-6 md:px-8 border-b-2 md:border-b-4 border-black h-[40px] md:h-[60px] inline-block mb-2"></span>
+                                                ) : (
+                                                    <span className="font-black text-black text-3xl md:text-5xl">{orderer.name}</span>
                                                 )}
-                                                <tr>
-                                                    <td className="pt-2 md:pt-4 text-center text-sm md:text-2xl font-black text-slate-500 uppercase tracking-widest whitespace-nowrap">總金額</td>
-                                                    <td className="pt-2 md:pt-4 text-left pl-3 md:pl-6 text-3xl md:text-6xl font-black text-red-600 tracking-tighter leading-none whitespace-nowrap">
-                                                        ${summary.grandTotal}
-                                                    </td>
-                                                </tr>
-                                            </tfoot>
-                                        </table>
-                                    </div>
-
-                                    {qrSrc && (
-                                        <div className="bg-slate-50 p-4 md:p-6 rounded-2xl md:rounded-[2rem] border-2 md:border-4 border-slate-100 mt-4 md:mt-8 flex justify-between items-center">
-                                            <div className="text-left flex-1">
-                                                <p className="text-[10px] md:text-sm font-black text-slate-400 tracking-[0.2em] md:tracking-[0.3em] uppercase">Wei Wei Seafood</p>
-                                                <p className="text-sm md:text-xl font-black text-slate-500 leading-tight mt-1">感謝您的訂購！請截圖保存本畫面。</p>
+                                                {orderer.phone && <span className="font-black text-black text-xl md:text-3xl">{orderer.phone}</span>}
                                             </div>
-                                            <div className="flex flex-col items-center justify-center ml-2 md:ml-4 bg-white p-1 md:p-2 rounded-lg md:rounded-xl border-2 border-slate-200">
-                                                <img src={qrSrc} className="w-16 h-16 md:w-32 md:h-32" alt="QR" />
-                                                <span className="text-[8px] md:text-[12px] font-bold text-slate-500 mt-1 md:mt-2 whitespace-nowrap">掃碼快速匯入</span>
-                                            </div>
+                                            {orderer.address && (
+                                                <div className="mt-2 md:mt-4 font-bold text-slate-700 text-lg md:text-2xl">{orderer.address}</div>
+                                            )}
+                                            {paymentStatus === 'paid' && (
+                                                <span className="mt-3 md:mt-4 bg-emerald-100 text-emerald-800 px-4 md:px-6 py-1.5 md:py-2 rounded-full text-base md:text-xl font-black border-2 border-emerald-200 tracking-tight flex items-center justify-center gap-1.5 md:gap-2 max-w-fit mx-auto">
+                                                    <Icons.CheckCircle /> 已付款
+                                                </span>
+                                            )}
+                                            {paymentStatus === 'credit' && (
+                                                <span className="mt-3 md:mt-4 bg-indigo-100 text-indigo-800 px-4 md:px-6 py-1.5 md:py-2 rounded-full text-base md:text-xl font-black border-2 border-indigo-200 tracking-tight flex items-center justify-center gap-1.5 md:gap-2 max-w-fit mx-auto">
+                                                    <Icons.CreditCard /> 本次剩餘 ${creditAmount}
+                                                </span>
+                                            )}
                                         </div>
-                                    )}
-                                </div>
-                            </div>
 
-                            <div className="p-4 md:p-6 bg-slate-100 flex flex-col md:flex-row gap-3 md:gap-6 no-print pb-28 md:pb-32">
-                                <button id="btn-screenshot" onClick={handleScreenshot} className="flex-1 bg-emerald-600 text-white py-4 md:py-6 rounded-2xl md:rounded-3xl font-black text-lg md:text-2xl shadow-lg hover:bg-emerald-500 transition-all flex items-center justify-center gap-2 md:gap-3 active:scale-95">
-                                    <Icons.Camera /> 彩色圖檔 (傳LINE用)
-                                </button>
-                                <button id="btn-thermal" onClick={handleThermalPrint} className="flex-1 bg-slate-800 text-white py-4 md:py-6 rounded-2xl md:rounded-3xl font-black text-lg md:text-2xl shadow-lg hover:bg-black transition-all flex items-center justify-center gap-2 md:gap-3 active:scale-95">
-                                    <Icons.Receipt /> 貼紙圖檔 (精臣用)
-                                </button>
-                                <button onClick={()=>setConfirmAction({type: 'next'})} className="flex-1 bg-sky-700 text-white py-4 md:py-6 rounded-2xl md:rounded-3xl font-black text-lg md:text-2xl shadow-lg hover:bg-sky-600 transition-all flex items-center justify-center gap-2 md:gap-3 active:scale-95">
-                                    <Icons.Plus /> 下一張訂單
-                                </button>
-                                <button onClick={()=>setShowBill(false)} className="flex-1 bg-slate-300 text-slate-700 py-4 md:py-6 rounded-2xl md:rounded-3xl font-black text-lg md:text-2xl shadow-xl active:bg-slate-400 transition-all flex items-center justify-center gap-2 md:gap-3">
-                                    <Icons.ChevronLeft /> 返回修改
-                                </button>
+                                        <div className="overflow-x-auto w-full pb-2">
+                                            <table className="w-full text-lg md:text-3xl order-table border-collapse min-w-[320px]">
+                                                <thead>
+                                                    <tr className="border-b-2 md:border-b-4 border-slate-300 text-black font-black uppercase text-sm md:text-2xl">
+                                                        <th className="text-right py-2 md:py-3 w-1/2">品項</th>
+                                                        <th className="text-center w-[15%] whitespace-nowrap">單價</th>
+                                                        <th className="text-center w-[10%] whitespace-nowrap">數量</th>
+                                                        <th className="text-left pl-3 md:pl-6 w-[25%] whitespace-nowrap">小計</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {summary.items.map((i, idx) => (
+                                                        <tr key={idx} className="text-black even-row even:bg-slate-100 border-b border-slate-200">
+                                                            <td className="text-right py-3 md:py-5 pr-2 md:pr-3 leading-tight font-normal">
+                                                                {i.name}
+                                                                {i.type === '一般' && jinPrices[i.id] !== undefined && <span className="ml-1 md:ml-2 text-[11px] md:text-2xl text-slate-500 font-bold whitespace-nowrap block md:inline">(${jinPrices[i.id]}/斤)</span>}
+                                                                {i.type === '分享' && <span className="ml-1 md:ml-2 text-[10px] md:text-sm bg-emerald-100 text-emerald-800 px-1 md:px-2 py-0.5 md:py-1 rounded border border-emerald-300 inline-block font-bold relative -top-0.5 md:-top-1">分享</span>}
+                                                                {i.type === '限定' && <span className="ml-1 md:ml-2 text-[10px] md:text-sm bg-sky-100 text-sky-800 px-1 md:px-2 py-0.5 md:py-1 rounded border border-sky-300 inline-block font-bold relative -top-0.5 md:-top-1">限定</span>}
+                                                            </td>
+                                                            <td className="text-center text-black px-1 md:px-2 font-normal whitespace-nowrap">${i.price}</td>
+                                                            <td className="text-center px-1 md:px-2 font-normal whitespace-nowrap">x{i.qty}</td>
+                                                            <td className="text-left pl-3 md:pl-6 text-black font-normal whitespace-nowrap">${i.total}</td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                                <tfoot className="border-t-4 md:border-t-8 border-slate-300 bg-white">
+                                                    <tr className="text-sm md:text-lg font-bold text-slate-500">
+                                                        <td rowSpan={footerRowCount} colSpan="2" className="p-3 md:p-6 align-bottom border-r-2 md:border-r-4 border-slate-100">
+                                                            <div className="text-slate-900 space-y-1 md:space-y-3 text-left">
+                                                                <p className="text-xs md:text-base font-black text-slate-400 tracking-widest border-b border-slate-200 pb-1 mb-1 md:mb-2 inline-block">匯款與聯絡資訊</p>
+                                                                <p className="text-[17px] md:text-3xl font-black leading-tight text-indigo-950">郵局(700) <br/><span className="text-xl md:text-5xl">0191289-0858464</span></p>
+                                                                <p className="text-[17px] md:text-3xl font-black leading-tight mt-1 md:mt-2 text-indigo-950">吳庭葳</p>
+                                                                <p className="text-xl md:text-4xl font-black leading-tight text-indigo-950">0910-745-919</p>
+                                                            </div>
+                                                        </td>
+                                                        <td className="pt-4 md:pt-8 text-center whitespace-nowrap text-sm md:text-xl font-bold">商品總計</td>
+                                                        <td className="pt-4 md:pt-8 text-left pl-3 md:pl-6 text-black font-black whitespace-nowrap text-lg md:text-3xl">${summary.subtotal}</td>
+                                                    </tr>
+                                                    <tr className="text-sm md:text-lg font-bold text-slate-500">
+                                                        <td className="text-center whitespace-nowrap pt-1 md:pt-2">運費金額</td>
+                                                        <td className="text-left pl-3 md:pl-6 text-black font-black whitespace-nowrap text-lg md:text-3xl pt-1 md:pt-2">+{summary.actualShip}</td>
+                                                    </tr>
+                                                    {summary.actualDisc > 0 && (
+                                                        <tr className="text-sm md:text-lg font-bold text-amber-500">
+                                                            <td className="text-center whitespace-nowrap pt-1 md:pt-2">折讓優惠</td>
+                                                            <td className="text-left pl-3 md:pl-6 font-black whitespace-nowrap text-lg md:text-3xl pt-1 md:pt-2">-{summary.actualDisc}</td>
+                                                        </tr>
+                                                    )}
+                                                    <tr>
+                                                        <td className="pt-2 md:pt-4 text-center text-sm md:text-2xl font-black text-slate-500 uppercase tracking-widest whitespace-nowrap">總金額</td>
+                                                        <td className="pt-2 md:pt-4 text-left pl-3 md:pl-6 text-3xl md:text-6xl font-black text-red-600 tracking-tighter leading-none whitespace-nowrap">
+                                                            ${summary.grandTotal}
+                                                        </td>
+                                                    </tr>
+                                                </tfoot>
+                                            </table>
+                                        </div>
+
+                                        {qrSrc && (
+                                            <div className="bg-slate-50 p-4 md:p-6 rounded-2xl md:rounded-[2rem] border-2 md:border-4 border-slate-100 mt-4 md:mt-8 flex justify-between items-center">
+                                                <div className="text-left flex-1">
+                                                    <p className="text-[9px] md:text-sm font-black text-slate-400 tracking-[0.1em] md:tracking-[0.3em] uppercase">Wei Wei Seafood</p>
+                                                    <p className="text-xs md:text-xl font-black text-slate-500 leading-tight mt-1">感謝您的訂購！請截圖保存本畫面。</p>
+                                                </div>
+                                                <div className="flex flex-col items-center justify-center ml-2 md:ml-4 bg-white pt-2 px-2 pb-2 md:pt-3 md:px-4 md:pb-4 rounded-xl md:rounded-2xl border-2 border-slate-200">
+                                                    <img src={qrSrc} className="w-16 h-16 md:w-32 md:h-32" alt="QR" />
+                                                    <span className="text-[9px] md:text-[14px] font-bold text-slate-500 mt-1 md:mt-2 whitespace-nowrap block">掃碼快速匯入</span>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+
+                                <div className="p-4 md:p-6 bg-slate-100 flex flex-col md:flex-row gap-3 md:gap-6 no-print">
+                                    <button id="btn-screenshot" onClick={handleScreenshot} className="flex-1 bg-emerald-600 text-white py-4 md:py-6 rounded-2xl md:rounded-3xl font-black text-lg md:text-2xl shadow-lg hover:bg-emerald-500 transition-all flex items-center justify-center gap-2 md:gap-3 active:scale-95">
+                                        <Icons.Camera /> 彩色圖檔 (傳LINE用)
+                                    </button>
+                                    <button id="btn-thermal" onClick={handleThermalPrint} className="flex-1 bg-slate-800 text-white py-4 md:py-6 rounded-2xl md:rounded-3xl font-black text-lg md:text-2xl shadow-lg hover:bg-black transition-all flex items-center justify-center gap-2 md:gap-3 active:scale-95">
+                                        <Icons.Receipt /> 貼紙圖檔 (精臣用)
+                                    </button>
+                                    <button onClick={()=>setConfirmAction({type: 'next'})} className="flex-1 bg-sky-700 text-white py-4 md:py-6 rounded-2xl md:rounded-3xl font-black text-lg md:text-2xl shadow-lg hover:bg-sky-600 transition-all flex items-center justify-center gap-2 md:gap-3 active:scale-95">
+                                        <Icons.Plus /> 下一張訂單
+                                    </button>
+                                    <button onClick={()=>setShowBill(false)} className="flex-1 bg-slate-300 text-slate-700 py-4 md:py-6 rounded-2xl md:rounded-3xl font-black text-lg md:text-2xl shadow-xl active:bg-slate-400 transition-all flex items-center justify-center gap-2 md:gap-3">
+                                        <Icons.ChevronLeft /> 返回修改
+                                    </button>
+                                </div>
+
                             </div>
                         </div>
                     )}
