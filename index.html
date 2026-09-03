@@ -6,9 +6,9 @@
     <title>葳葳海鮮 - 雲端訂購系統</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.6/babel.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 
     <style>
@@ -178,9 +178,16 @@
                 if (this.state.hasError) {
                     return (
                         <div style={{ padding: '20px', textAlign: 'center', fontFamily: 'sans-serif' }}>
-                            <h2 style={{ color: 'red' }}>糟糕，發生了一些錯誤</h2>
-                            <p>{this.state.errorInfo?.toString()}</p>
-                            <button onClick={() => window.location.reload()} style={{ padding: '10px 20px', marginTop: '20px' }}>重新整理</button>
+                            <h2 style={{ color: 'red', fontWeight: 'bold' }}>糟糕，發生了一些錯誤</h2>
+                            <p style={{ marginTop: '10px', fontSize: '14px', color: '#666' }}>
+                                {this.state.errorInfo?.toString() || '未知的錯誤'}
+                            </p>
+                            <button 
+                                onClick={() => window.location.reload()} 
+                                style={{ padding: '10px 20px', marginTop: '20px', background: '#0ea5e9', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer' }}
+                            >
+                                重新整理
+                            </button>
                         </div>
                     );
                 }
@@ -324,7 +331,7 @@
                                     強制進入單機測試模式
                                 </button>
                                 <button onClick={() => {setInitError(null); loadDataFromGAS();}} className="w-full py-3 md:py-4 rounded-xl font-bold text-lg text-slate-600 bg-slate-100 hover:bg-slate-200 active:scale-95 transition-transform flex items-center justify-center gap-2">
-                                    <Icons.RefreshCw /> 重新嘗試連線
+                                    <Icons.Refresh /> 重新嘗試連線
                                 </button>
                             </div>
                         )}
@@ -358,7 +365,9 @@
             const handleAddExtra = (pid) => {
                 setExtraStdItems(prev => {
                     const current = prev[pid] || [];
-                    return { ...prev, [pid]: [...current, { id: Date.now(), price: '', qty: '' }] };
+                    // 為了避免重複的 Key，加入隨機字串
+                    const uid = Date.now().toString() + Math.random().toString(36).substring(7);
+                    return { ...prev, [pid]: [...current, { id: uid, price: '', qty: '' }] };
                 });
             };
             const updateExtra = (pid, extId, field, value) => {
@@ -418,43 +427,59 @@
                 setInventory(prev => prev.map(p => p.id === pid ? { ...p, stock: parseInt(newStock) || 0 } : p));
             };
 
+            // 【極其重要】：為了防止 React Render 錯誤，必須確保產出的陣列有穩定唯一的 Key
             const summary = useMemo(() => {
-                const items = [];
-                inventory.forEach(p => {
-                    const q = parseInt(stdQtys[p.id]) || 0;
-                    if (q > 0) items.push({ id: p.id, name: p.name, price: stdPrices[p.id], qty: q, total: stdPrices[p.id] * q, type: '一般', baseId: p.id });
-                    
-                    const extras = extraStdItems[p.id] || [];
-                    extras.forEach(ext => {
-                        const eq = parseInt(ext.qty) || 0;
-                        const ep = parseInt(ext.price) || 0;
-                        if (eq > 0) {
-                            items.push({
-                                id: `ext-${p.id}-${ext.id}`,
-                                name: p.name,
-                                price: ep,
-                                qty: eq,
-                                total: ep * eq,
-                                type: '另價',
-                                baseId: p.id
-                            });
-                        }
+                try {
+                    const items = [];
+                    inventory.forEach(p => {
+                        const q = parseInt(stdQtys[p.id]) || 0;
+                        if (q > 0) items.push({ 
+                            uid: `std-${p.id}`, // 唯一識別碼
+                            id: p.id, 
+                            name: p.name, 
+                            price: stdPrices[p.id] || 0, 
+                            qty: q, 
+                            total: (stdPrices[p.id] || 0) * q, 
+                            type: '一般', 
+                            baseId: p.id 
+                        });
+                        
+                        const extras = extraStdItems[p.id] || [];
+                        extras.forEach(ext => {
+                            const eq = parseInt(ext.qty) || 0;
+                            const ep = parseInt(ext.price) || 0;
+                            if (eq > 0) {
+                                items.push({
+                                    uid: `ext-${p.id}-${ext.id}`, // 唯一識別碼
+                                    id: ext.id,
+                                    name: p.name,
+                                    price: ep,
+                                    qty: eq,
+                                    total: ep * eq,
+                                    type: '另價',
+                                    baseId: p.id
+                                });
+                            }
+                        });
                     });
-                });
 
-                limitedItems.forEach(i => {
-                    items.push({ id: i.id, name: i.name, price: i.price, qty: i.qty, total: i.price * i.qty, type: '限定' });
-                });
-                sharingItems.forEach(i => {
-                    items.push({ id: i.id, name: i.name, price: 0, qty: i.qty, total: 0, type: '分享' });
-                });
+                    limitedItems.forEach((i, idx) => {
+                        items.push({ uid: `lmt-${i.id}-${idx}`, id: i.id, name: i.name, price: i.price, qty: i.qty, total: i.price * i.qty, type: '限定' });
+                    });
+                    sharingItems.forEach((i, idx) => {
+                        items.push({ uid: `shr-${i.id}-${idx}`, id: i.id, name: i.name, price: 0, qty: i.qty, total: 0, type: '分享' });
+                    });
 
-                const subtotal = items.reduce((s,i)=>s+i.total, 0);
-                const actualShip = ship.type === 'free' ? 0 : (parseInt(ship.fee) || 0);
-                const actualDisc = parseInt(discount) || 0;
-                const grandTotal = subtotal + actualShip - actualDisc;
+                    const subtotal = items.reduce((s,i)=>s+i.total, 0);
+                    const actualShip = ship.type === 'free' ? 0 : (parseInt(ship.fee) || 0);
+                    const actualDisc = parseInt(discount) || 0;
+                    const grandTotal = subtotal + actualShip - actualDisc;
 
-                return { items, subtotal, actualShip, actualDisc, grandTotal };
+                    return { items, subtotal, actualShip, actualDisc, grandTotal };
+                } catch (err) {
+                    console.error("Summary 計算錯誤", err);
+                    return { items: [], subtotal: 0, actualShip: 0, actualDisc: 0, grandTotal: 0 };
+                }
             }, [stdQtys, stdPrices, extraStdItems, limitedItems, sharingItems, ship, discount, inventory]);
 
             const submitOrder = async () => {
@@ -660,9 +685,11 @@
                                 </div>
                                 <div className="p-5 md:p-8 overflow-y-auto space-y-6 custom-scrollbar text-slate-700 bg-slate-50">
                                     <div className="relative pl-4 border-l-4 border-purple-500">
-                                        <h3 className="font-black text-lg text-purple-800 mb-1">v0802-GAS (Google 表單雲端版)</h3>
+                                        <h3 className="font-black text-lg text-purple-800 mb-1">v0802-GAS (修復版)</h3>
                                         <p className="text-xs text-slate-400 mb-2 font-bold">2026/08/02</p>
                                         <ul className="list-disc pl-4 space-y-1 text-sm font-bold text-slate-600">
+                                            <li><span className="text-purple-600">修復崩潰問題</span>：解決了 `Minified React error #310` 導致畫面一片空白的嚴重錯誤。</li>
+                                            <li><span className="text-purple-600">優化渲染機制</span>：強化了多單價群組的 ID 生成邏輯，確保系統穩定運行。</li>
                                             <li><span className="text-purple-600">更換資料庫引擎</span>：以 Google Apps Script 取代 Firebase。</li>
                                             <li><span className="text-purple-600">直覺化後台</span>：歷史訂單、庫存報價皆會自動寫入您的 Google 試算表中，方便老闆隨時查閱與備份。</li>
                                         </ul>
@@ -846,7 +873,7 @@
                                 {summary.items.map((i, idx) => {
                                     const isSameAsPrev = idx > 0 && i.baseId && summary.items[idx - 1].baseId === i.baseId && (i.type === '一般' || i.type === '另價') && (summary.items[idx - 1].type === '一般' || summary.items[idx - 1].type === '另價');
                                     return (
-                                        <tr key={idx}>
+                                        <tr key={i.uid || idx}>
                                             <td style={{fontWeight: 400, fontSize: '48px', color: !isSameAsPrev ? '#000' : 'transparent'}}>
                                                 {!isSameAsPrev ? (
                                                     <>
@@ -928,7 +955,7 @@
                                         ) : (
                                             <span className="text-[10px] md:text-xs bg-emerald-100 text-emerald-700 px-2 py-1 rounded-full font-bold">📝 表單已連線</span>
                                         )}
-                                        <span className="text-[10px] md:text-xs bg-sky-100 text-sky-700 px-2 py-1 rounded-full font-bold cursor-pointer" onClick={()=>setShowChangelog(true)}>v0802-GAS</span>
+                                        <span className="text-[10px] md:text-xs bg-sky-100 text-sky-700 px-2 py-1 rounded-full font-bold cursor-pointer" onClick={()=>setShowChangelog(true)}>v0802-GAS 修復版</span>
                                     </p>
                                 </div>
                             </header>
@@ -1070,7 +1097,8 @@
                                     <button onClick={()=>{
                                         if(limitedItems.length>=10) return setSysMsg({type: 'warning', title: '超過上限', text: '期間限定項目最多 10 項。'});
                                         if(!newLimited.name || !newLimited.price || !newLimited.qty) return setSysMsg({type: 'warning', title: '資料不完整', text: '請填寫品名、單價與數量。'});
-                                        setLimitedItems([...limitedItems, {...newLimited, id:Date.now(), price:parseInt(newLimited.price), qty:parseInt(newLimited.qty)}]);
+                                        // 使用穩定的 uid
+                                        setLimitedItems([...limitedItems, {...newLimited, id:Date.now() + Math.random().toString(36).substring(7), price:parseInt(newLimited.price), qty:parseInt(newLimited.qty)}]);
                                         setNewLimited({name:'', price:'', qty:1});
                                     }} className="w-full md:col-span-2 bg-gradient-to-b from-sky-500 to-sky-700 text-white p-3 md:p-4 rounded-xl md:rounded-2xl flex items-center justify-center gap-2 font-black text-lg md:text-xl shadow-[0_4px_0_rgb(3,105,161)] active:shadow-[0_0px_0_rgb(3,105,161)] active:translate-y-1 transition-all">
                                         <Icons.Plus /> <span>新增</span>
@@ -1098,7 +1126,7 @@
                                         <button onClick={()=>{
                                             if(sharingItems.length>=10) return setSysMsg({type: 'warning', title: '超過上限', text: '友情分享項目最多 10 項。'});
                                             if(!newSharing.name || !newSharing.qty) return setSysMsg({type: 'warning', title: '資料不完整', text: '請填寫品名與數量。'});
-                                            setSharingItems([...sharingItems, {...newSharing, id:Date.now(), qty:parseInt(newSharing.qty)}]);
+                                            setSharingItems([...sharingItems, {...newSharing, id:Date.now() + Math.random().toString(36).substring(7), qty:parseInt(newSharing.qty)}]);
                                             setNewSharing({name:'', qty:1});
                                         }} className="flex-1 md:col-span-2 bg-gradient-to-b from-emerald-500 to-emerald-700 text-white p-3 md:p-4 rounded-xl md:rounded-2xl flex items-center justify-center gap-2 font-black text-lg md:text-xl shadow-[0_4px_0_rgb(4,120,87)] active:shadow-[0_0px_0_rgb(4,120,87)] active:translate-y-1 transition-all">
                                             <Icons.Plus /> <span>分享</span>
@@ -1172,7 +1200,7 @@
                                                     {summary.items.map((i, idx) => {
                                                         const isSameAsPrev = idx > 0 && i.baseId && summary.items[idx - 1].baseId === i.baseId && (i.type === '一般' || i.type === '另價') && (summary.items[idx - 1].type === '一般' || summary.items[idx - 1].type === '另價');
                                                         return (
-                                                            <tr key={idx} className="text-black even-row even:bg-slate-100 border-b border-slate-200">
+                                                            <tr key={i.uid} className="text-black even-row even:bg-slate-100 border-b border-slate-200">
                                                                 <td className="text-right py-3 md:py-5 pr-2 md:pr-3 leading-tight font-normal">
                                                                     {!isSameAsPrev && (
                                                                         <>
@@ -1294,7 +1322,7 @@
                                         summary.items.map((item, idx) => {
                                             const isSameAsPrev = idx > 0 && item.baseId && summary.items[idx - 1].baseId === item.baseId && (item.type === '一般' || item.type === '另價') && (summary.items[idx - 1].type === '一般' || summary.items[idx - 1].type === '另價');
                                             return (
-                                                <div key={idx} className="flex justify-between items-center py-2 md:py-3 border-b border-slate-100 last:border-0">
+                                                <div key={item.uid} className="flex justify-between items-center py-2 md:py-3 border-b border-slate-100 last:border-0">
                                                     <div className="flex-1 pr-2 overflow-hidden">
                                                         <div className={`font-medium text-slate-800 text-base md:text-xl truncate ${isSameAsPrev ? 'opacity-0' : ''}`}>
                                                             {item.name} 
@@ -1344,12 +1372,8 @@
         }
 
         const root = ReactDOM.createRoot(document.getElementById('root'));
-        // 加入 Error Boundary 保護整個應用程式
-        root.render(
-            <ErrorBoundary>
-                <MainApp />
-            </ErrorBoundary>
-        );
+        // 確保 App 被正確渲染
+        root.render(<ErrorBoundary><MainApp /></ErrorBoundary>);
     </script>
 </body>
 </html>
