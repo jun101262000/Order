@@ -1,18 +1,153 @@
-<!-- ... existing code ... -->
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>葳葳海鮮 - 雲端訂購系統</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.6/babel.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&display=swap');
+        
+        html { font-size: 16px !important; }
+        body { 
+            font-family: 'Noto Sans TC', sans-serif; 
+            line-height: 1.4;
+            -webkit-text-size-adjust: 100%;
+            padding-bottom: 240px;
+        }
+        .order-table th { padding: 12px 8px; border-bottom: 3px solid #000; color: #000; }
+        .order-table td { padding: 16px 8px; border-bottom: 1px solid #cbd5e1; color: #000; }
+        
+        input:focus { border-color: #0369a1 !important; outline: none; }
+        
+        .modal-overlay {
+            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.85); z-index: 9999;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            padding: 16px;
+        }
+
+        .drawer-transition { transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+        
+        .footer-input {
+            background-color: rgba(255,255,255,0.1);
+            border: 1px solid rgba(255,255,255,0.2);
+            color: white;
+        }
+        .footer-input:focus {
+            background-color: rgba(255,255,255,0.2);
+            border-color: white;
+        }
+        .footer-input::placeholder { color: rgba(255,255,255,0.4); }
+
+        #thermal-receipt {
+            position: absolute; left: -9999px; top: 0; width: 800px; min-height: 1200px;
+            background: #ffffff; color: #000000; padding: 40px; box-sizing: border-box;
+            font-family: 'Noto Sans TC', sans-serif; border: 4px solid #000000;
+            -webkit-font-smoothing: none; text-rendering: optimizeSpeed;
+        }
+        .thermal-header { text-align: center; border-bottom: 6px solid #000; padding-bottom: 20px; margin-bottom: 20px; }
+        .thermal-title { font-size: 64px; font-weight: 900; line-height: 1; color: #000; }
+        .thermal-meta { font-size: 26px; margin-top: 10px; font-weight: 900; color: #000; }
+        .thermal-info { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; border-bottom: 4px solid #000; padding-bottom: 20px; }
+        .thermal-customer { font-size: 46px; font-weight: 900; color: #000; word-break: break-all; }
+        .thermal-phone { font-size: 34px; font-weight: 900; color: #000; margin-top: 5px; }
+        .thermal-address { font-size: 30px; font-weight: 900; color: #000; margin-top: 10px; line-height: 1.3; }
+        .thermal-status { font-size: 32px; font-weight: 900; border: 4px solid #000; padding: 5px 15px; border-radius: 10px; display: inline-block; margin-top: 10px; color: #000; }
+        .thermal-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+        .thermal-table th { border-bottom: 4px solid #000; text-align: left; font-size: 30px; padding: 10px 0; color: #000; font-weight: 900; }
+        .thermal-table td { border-bottom: 2px dashed #000; font-size: 48px; padding: 15px 0; font-weight: 400; color: #000; } 
+        .thermal-footer { border-top: 6px solid #000; padding-top: 20px; }
+        .thermal-total-row { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 10px; }
+        .thermal-total-label { font-size: 34px; font-weight: 900; color: #000; }
+        .thermal-total-amount { font-size: 80px; font-weight: 900; line-height: 1; color: #000; }
+        .thermal-contact { text-align: left; margin-top: 30px; color: #000; border-top: 4px solid #000; padding-top: 20px; }
+
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+
+        @media print {
+            .no-print { display: none !important; }
+            body { background: white; padding-bottom: 0; }
+            .print-container { width: 100%; border: none; box-shadow: none; }
+            tr.even-row { background-color: #f1f5f9 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        }
+    </style>
+</head>
+<body class="bg-slate-100">
+    <div id="root">
+        <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; color: #475569; background-color: #f8fafc;">
+            <svg style="animation: spin 1s linear infinite; width: 50px; height: 50px; margin-bottom: 20px;" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" stroke-opacity="0.25"></circle>
+                <path fill="#0284c7" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <h2 style="font-size: 20px; font-weight: bold; margin-bottom: 10px;">系統初始化中...</h2>
+        </div>
+    </div>
+
+    <script type="text/babel">
+        const { useState, useMemo, useEffect } = React;
+
+        // ==========================================
+        // 專屬 Google Apps Script 網址
+        // ==========================================
+        const GAS_URL = "https://script.google.com/macros/s/AKfycbwe4dEAFMD-3lkgQUl3PXfu_sJb419LqS04bJnz5CRB_fa-QRQU6eyrJmIjf4d7nuYa/exec";
+        
+        const Icons = {
+            Anchor: () => <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="w-8 h-8 md:w-10 md:h-10"><path d="M12 22V8"/><path d="M5 12H2a10 10 0 0 0 20 0h-3"/><circle cx="12" cy="5" r="3"/></svg>,
+            Plus: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>,
+            Trash: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>,
+            Camera: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6 md:w-7 md:h-7"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>,
+            Printer: () => <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect width="12" height="8" x="6" y="14"/></svg>,
+            Close: () => <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-8 h-8"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>,
+            History: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5 md:w-6 md:h-6"><path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"/><path d="M12 7v5l4 2"/></svg>,
+            Refresh: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5 md:w-6 md:h-6"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>,
+            List: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>,
+            ChevronLeft: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>,
+            Alert: () => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>,
+            Check: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5 md:w-6 md:h-6"><polyline points="20 6 9 17 4 12"/></svg>,
+            CheckCircle: () => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>,
+            CreditCard: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5 md:w-6 md:h-6"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/><line x1="10" x2="10" y1="15" y2="15"/></svg>,
+            Package: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5 md:w-6 md:h-6"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>,
+            FileText: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5 md:w-6 md:h-6"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>,
+            RefreshCw: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+        };
+
+        const DEFAULT_PRODUCTS = [
+            { id: 1, name: '整尾無刺虱目魚', unit: '尾', defPrice: 220, range: '170~220', canEdit: true, defJinPrice: 190 },
+            { id: 2, name: '去頭尾半尾魚', unit: '片', defPrice: 170, range: '110~170', canEdit: true, defJinPrice: 240 },
+            { id: 3, name: '透抽', unit: '尾', defPrice: 330, range: '180~330', canEdit: true, note: '依重量', defJinPrice: 330 },
+            { id: 4, name: '魚肚', unit: '片(200~240g)', defPrice: 130, canEdit: true },
+            { id: 5, name: '魚柳', unit: '包(半斤)', defPrice: 70, canEdit: true },
+            { id: 6, name: '魚嶺(已調味)', unit: '包(半斤)', defPrice: 110, canEdit: true },
+            { id: 7, name: '魚皮', unit: '包(半斤)', defPrice: 70, canEdit: true },
+            { id: 8, name: '生蝦', unit: '包(500g)', defPrice: 270, canEdit: true },
+            { id: 9, name: '熟蝦(退冰即可食)', unit: '包(500g)', defPrice: 270, canEdit: true },
+            { id: 10, name: '蝦仁', unit: '包(150g)', defPrice: 120, canEdit: true },
+            { id: 11, name: '挪威鯖魚(微刺)', unit: '片', defPrice: 80, canEdit: true },
+            { id: 12, name: '吳郭魚(台灣鯛)', unit: '大尾', defPrice: 100, range: '80~100', canEdit: true },
+            { id: 13, name: '學甲虱目魚丸(真空包)', unit: '包(1斤)', defPrice: 120, canEdit: true, defJinPrice: 120 },
             { id: 14, name: '花枝丸', unit: '包(1斤)', defPrice: 300, canEdit: true, defJinPrice: 300 },
             { id: 15, name: '花枝月亮蝦餅', unit: '包', defPrice: 360, canEdit: true },
             { id: 16, name: '花枝蝦排', unit: '包', defPrice: 360, canEdit: true },
         ];
 
-        // 幫庫存結構瘦身，減少傳輸負擔
         const minifyInventory = (inv) => {
             return inv.map(p => ({
                 i: p.id,
                 n: p.name,
-                s: p.stock || 0, // 主庫存 (預設單價的庫存)
+                s: p.stock || 0,
                 dp: p.defPrice,
                 djp: p.defJinPrice,
-                // 多單價庫存: { "價格": 數量, "價格2": 數量 }
                 es: p.extraStocks || {} 
             }));
         };
@@ -34,19 +169,91 @@
         };
 
         const fetchGas = async (action, payload = null) => {
-<!-- ... existing code ... -->
-        function MainApp() {
-            // 所有 Hook 必須在這裡宣告，絕不可放在條件式之後！
+            if (!GAS_URL || GAS_URL.includes("您的_GAS_網址")) throw new Error("尚未設定 Google Apps Script 網址。");
+            if (action === 'init') {
+                const res = await fetch(GAS_URL);
+                return await res.json();
+            } else {
+                const res = await fetch(GAS_URL, {
+                    method: 'POST',
+                    headers: { "Content-Type": "text/plain;charset=utf-8" },
+                    body: JSON.stringify({ action, payload })
+                });
+                return await res.json();
+            }
+        };
+
+        function App() {
+            // 所有 React Hooks (useState, useEffect, useMemo) 都必須寫在最上層，不可包在 if 裡面！
             const [dbReady, setDbReady] = useState(false);
             const [isLocalMode, setIsLocalMode] = useState(false);
             const [initError, setInitError] = useState(null);
-<!-- ... existing code ... -->
+            const [isSyncing, setIsSyncing] = useState(false);
+
+            const [showPriceModal, setShowPriceModal] = useState(false);
+            const [showChangelog, setShowChangelog] = useState(false);
+            const [showInventoryPanel, setShowInventoryPanel] = useState(false);
+            const [sysMsg, setSysMsg] = useState(null);
+
+            const [inventory, setInventory] = useState([]);
+            const [history, setHistory] = useState([]);
+
+            const [orderer, setOrderer] = useState({ name: '', phone: '', address: '', isHandwritten: false });
+            const [paymentStatus, setPaymentStatus] = useState('pending');
+            const [creditAmount, setCreditAmount] = useState('');
+            
+            const [stdQtys, setStdQtys] = useState({});
+            const [stdPrices, setStdPrices] = useState({});
+            const [jinPrices, setJinPrices] = useState({});
+            const [extraStdItems, setExtraStdItems] = useState({});
+            
+            const [limitedItems, setLimitedItems] = useState([]);
+            const [newLimited, setNewLimited] = useState({ name: '', price: '', qty: '' });
+            const [sharingItems, setSharingItems] = useState([]);
+            const [newSharing, setNewSharing] = useState({ name: '', qty: '' });
+            
+            const [ship, setShip] = useState({ type: 'free', fee: '' });
+            const [discount, setDiscount] = useState('');
+            
+            const [showBill, setShowBill] = useState(false);
+            const [screenshotUrl, setScreenshotUrl] = useState(null);
+            const [showDetailDrawer, setShowDetailDrawer] = useState(false);
+            const [currentOrderId, setCurrentOrderId] = useState(null);
+            const [confirmAction, setConfirmAction] = useState(null);
+
+            // ================= 運算邏輯區 =================
+            const summary = useMemo(() => {
+                const items = [];
+                inventory.forEach(p => {
+                    const q = parseInt(stdQtys[p.id]) || 0;
+                    if (q > 0) items.push({ id: p.id, name: p.name, price: stdPrices[p.id] || p.defPrice, qty: q, total: (stdPrices[p.id] || p.defPrice) * q, type: '一般', baseId: p.id });
+                    
+                    const extras = extraStdItems[p.id] || [];
+                    extras.forEach(ext => {
+                        const eq = parseInt(ext.qty) || 0;
+                        const ep = parseInt(ext.price) || 0;
+                        if (eq > 0) {
+                            items.push({ id: `ext-${p.id}-${ext.id}`, name: p.name, price: ep, qty: eq, total: ep * eq, type: '另價', baseId: p.id });
+                        }
+                    });
+                });
+
+                limitedItems.forEach(i => items.push({ id: i.id, name: i.name, price: i.price, qty: i.qty, total: i.price * i.qty, type: '限定' }));
+                sharingItems.forEach(i => items.push({ id: i.id, name: i.name, price: 0, qty: i.qty, total: 0, type: '分享' }));
+
+                const subtotal = items.reduce((s,i)=>s+i.total, 0);
+                const actualShip = ship.type === 'free' ? 0 : (parseInt(ship.fee) || 0);
+                const actualDisc = parseInt(discount) || 0;
+                const grandTotal = subtotal + actualShip - actualDisc;
+
+                return { items, subtotal, actualShip, actualDisc, grandTotal };
+            }, [stdQtys, stdPrices, extraStdItems, limitedItems, sharingItems, ship, discount, inventory]);
+
             const loadDataFromGAS = async () => {
                 try {
                     setInitError(null);
                     const res = await fetchGas('init');
-                    if(res && res.error) throw new Error(res.error);
-
+                    
                     let items = res.inventory || [];
                     if (items.length === 0) {
                         items = DEFAULT_PRODUCTS.map(p => ({...p, stock: 0, extraStocks: {}}));
@@ -59,149 +266,459 @@
                     
                     const newStd = {}; const newJin = {};
                     items.forEach(item => {
-<!-- ... existing code ... -->
+                        newStd[item.id] = item.defPrice;
+                        if(item.defJinPrice) newJin[item.id] = item.defJinPrice;
+                    });
+                    setStdPrices(newStd);
+                    setJinPrices(newJin);
+
+                    let ords = res.orders || [];
+                    ords.sort((a,b) => b.timestampMs - a.timestampMs); 
+                    setHistory(ords);
+
+                    setDbReady(true);
+                    if(!window.hasShownPriceModal) {
+                        setShowPriceModal(true);
+                        window.hasShownPriceModal = true;
+                    }
+                } catch (error) {
+                    console.error("GAS 連線失敗", error);
+                    setInitError(error.message || "連線失敗，請檢查網址或網路狀態。");
+                }
+            };
+
+            useEffect(() => {
+                if (!dbReady && !isLocalMode) {
+                    loadDataFromGAS();
+                }
+            }, []);
+
             const startLocalMode = () => {
-                setIsLocalMode(true); setDbReady(true);
+                setIsLocalMode(true);
+                setDbReady(true);
                 setInventory(DEFAULT_PRODUCTS.map(p => ({...p, stock: 0, extraStocks: {}})));
+                
                 const newStd = {}; const newJin = {};
-                DEFAULT_PRODUCTS.forEach(item => { newStd[item.id] = item.defPrice; if(item.defJinPrice) newJin[item.id] = item.defJinPrice; });
-                setStdPrices(newStd); setJinPrices(newJin);
-<!-- ... existing code ... -->
+                DEFAULT_PRODUCTS.forEach(item => {
+                    newStd[item.id] = item.defPrice;
+                    if(item.defJinPrice) newJin[item.id] = item.defJinPrice;
+                });
+                setStdPrices(newStd);
+                setJinPrices(newJin);
+
+                const saved = localStorage.getItem('weiwei_history_v2');
+                if (saved) { try { setHistory(JSON.parse(saved)); } catch(e) {} }
+
+                setInitError(null);
+                setShowPriceModal(true); 
+            };
+
+            const clearAllState = () => {
+                setOrderer({ name: '', phone: '', address: '', isHandwritten: false });
+                setPaymentStatus('pending'); setCreditAmount('');
+                setStdQtys({}); setExtraStdItems({}); 
+                setLimitedItems([]); setSharingItems([]);
+                setShip({ type: 'free', fee: '' }); setDiscount('');
+                setNewLimited({ name: '', price: '', qty: '' }); setNewSharing({ name: '', qty: '' });
+                setCurrentOrderId(null); setShowBill(false); setScreenshotUrl(null);
+                window.scrollTo(0, 0); setConfirmAction(null);
+            };
+
+            const loadFromHistory = (record) => {
+                const d = record;
+                setOrderer(d.orderer || { name: '', phone: '', address: '', isHandwritten: false });
+                setPaymentStatus(d.paymentStatus || 'pending'); setCreditAmount(d.creditAmount || '');
+                setStdQtys(d.stdQtys || {}); 
+                setExtraStdItems(d.extraStdItems || {});
+                setLimitedItems(d.limitedItems || []); setSharingItems(d.sharingItems || []);
+                setShip(d.ship || { type: 'free', fee: '' }); setDiscount(d.discount || '');
+                setCurrentOrderId(d.dbId); setShowHistory(false); setShowBill(false); 
+                window.scrollTo(0,0);
+            };
+
+            const handleAddExtra = (pid) => {
+                setExtraStdItems(prev => {
+                    const current = prev[pid] || [];
+                    return { ...prev, [pid]: [...current, { id: Date.now(), price: '', qty: '' }] };
+                });
+            };
+            
+            const updateExtra = (pid, extId, field, value) => {
+                setExtraStdItems(prev => {
+                    const current = prev[pid] || [];
+                    return { ...prev, [pid]: current.map(item => item.id === extId ? { ...item, [field]: value } : item) };
+                });
+            };
+            
+            const removeExtra = (pid, extId) => {
+                setExtraStdItems(prev => {
+                    const current = prev[pid] || [];
+                    return { ...prev, [pid]: current.filter(item => item.id !== extId) };
+                });
+            };
+
             const savePricesToDb = async () => {
-                if (isLocalMode) return setShowPriceModal(false);
+                if (isLocalMode) { setShowPriceModal(false); return; }
                 setIsSyncing(true);
                 try {
-                    const newInventory = inventory.map(p => ({ ...p, defPrice: stdPrices[p.id] !== undefined ? stdPrices[p.id] : p.defPrice, defJinPrice: jinPrices[p.id] !== undefined ? jinPrices[p.id] : p.defJinPrice }));
+                    const newInventory = inventory.map(p => ({
+                        ...p,
+                        defPrice: stdPrices[p.id] !== undefined ? stdPrices[p.id] : p.defPrice,
+                        defJinPrice: jinPrices[p.id] !== undefined ? jinPrices[p.id] : p.defJinPrice
+                    }));
                     await fetchGas("saveInventory", minifyInventory(newInventory));
-                    setInventory(newInventory); setShowPriceModal(false);
-                } catch(e) { setSysMsg({ type: 'error', title: '儲存失敗', text: '無法儲存報價至雲端。' }); }
-                finally { setIsSyncing(false); }
+                    setInventory(newInventory); 
+                    setShowPriceModal(false);
+                } catch(e) {
+                    setSysMsg({ type: 'error', title: '儲存失敗', text: '無法儲存報價至雲端，請檢查網路連線。' });
+                } finally { setIsSyncing(false); }
             };
 
             const handleFinishInventory = async () => {
-                if (isLocalMode) return setShowInventoryPanel(false);
+                if (isLocalMode) { setShowInventoryPanel(false); return; }
                 setIsSyncing(true);
-                try { 
-                    await fetchGas("saveInventory", minifyInventory(inventory)); 
-                    setShowInventoryPanel(false); 
-                } 
-                catch(e) { setSysMsg({ type: 'error', title: '儲存失敗', text: '無法更新庫存至雲端。' }); } 
-                finally { setIsSyncing(false); }
+                try {
+                    await fetchGas("saveInventory", minifyInventory(inventory));
+                    setShowInventoryPanel(false);
+                } catch(e) {
+                    setSysMsg({ type: 'error', title: '儲存失敗', text: '無法更新庫存至雲端，請檢查網路連線。' });
+                } finally { setIsSyncing(false); }
             };
 
-            // 處理多單價庫存變更
-            const handleExtraStockChange = (pid, priceKey, newValue) => {
+            const updateStockLocal = (pid, priceKey, newValue) => {
                 setInventory(prev => prev.map(p => {
                     if (p.id !== pid) return p;
-                    const newExtraStocks = { ...p.extraStocks };
-                    const val = parseInt(newValue);
-                    if (isNaN(val) || val <= 0) {
-                        delete newExtraStocks[priceKey]; // 若為0或空則刪除該價位的庫存紀錄
+                    const val = parseInt(newValue) || 0;
+                    
+                    if (priceKey === null) {
+                        return { ...p, stock: val };
                     } else {
-                        newExtraStocks[priceKey] = val;
+                        const newExtraStocks = { ...p.extraStocks };
+                        if (val === 0 && !newExtraStocks[priceKey]) {
+                            // ignore
+                        } else {
+                            newExtraStocks[priceKey] = val;
+                        }
+                        return { ...p, extraStocks: newExtraStocks };
                     }
-                    return { ...p, extraStocks: newExtraStocks };
                 }));
             };
 
-            // 在新增多單價欄位時，同步初始化其庫存結構 (若尚無)
-            const handleAddExtraAndInitStock = (pid) => {
-                handleAddExtra(pid);
-            };
-
             const submitOrder = async () => {
-                if (!orderer.isHandwritten && !orderer.name) return setSysMsg({ type: 'warning', title: '缺少資料', text: '請填寫姓名或勾選「留白手寫」' });
-<!-- ... existing code ... -->
+                if (!orderer.isHandwritten && !orderer.name) return setSysMsg({ type: 'warning', title: '缺少資料', text: '請填寫姓名，或勾選「留白手寫」' });
+                if (summary.items.length === 0) return setSysMsg({ type: 'warning', title: '缺少商品', text: '請至少選擇一項產品' });
+                if (newLimited.name || newLimited.price || newLimited.qty) return setSysMsg({ type: 'warning', title: '有未加入的項目', text: '您在「期間限定」輸入了資料但尚未點擊【新增】。' });
+                if (newSharing.name || newSharing.qty) return setSysMsg({ type: 'warning', title: '有未加入的項目', text: '您在「友情分享」輸入了資料但尚未點擊【分享】。' });
+
+                let hasEmptyExtra = false;
+                Object.values(extraStdItems).forEach(list => list.forEach(ext => { if (!ext.price || !ext.qty) hasEmptyExtra = true; }));
+                if (hasEmptyExtra) return setSysMsg({type: 'warning', title: '多單價未填寫完整', text: '您有新增「其他單價」但未填寫金額或數量。'});
+                
+                setIsSyncing(true);
+
+                try {
+                    const newDbId = currentOrderId || Date.now().toString();
+                    const orderData = { 
+                        dbId: newDbId, orderer, paymentStatus, creditAmount, stdQtys, stdPrices, jinPrices, extraStdItems, limitedItems, sharingItems, ship, discount, grandTotal: summary.grandTotal,
+                        timestampMs: Date.now(), timestampStr: new Date().toLocaleString('zh-TW')
+                    };
+
+                    let updatedInventory = [...inventory];
+                    for (const item of summary.items) {
+                        if (item.type === '一般' || item.type === '另價') {
+                            const pIdx = updatedInventory.findIndex(x => x.id === item.baseId);
+                            if (pIdx > -1 && !currentOrderId) {
+                                if (item.type === '一般') {
+                                    updatedInventory[pIdx].stock -= item.qty;
+                                } else if (item.type === '另價') {
+                                    const pKey = item.price.toString();
+                                    if(!updatedInventory[pIdx].extraStocks) updatedInventory[pIdx].extraStocks = {};
+                                    updatedInventory[pIdx].extraStocks[pKey] = (updatedInventory[pIdx].extraStocks[pKey] || 0) - item.qty;
+                                }
+                            }
+                        }
+                    }
+
                     if (isLocalMode) {
                         let newHistory = [...history];
                         const idx = newHistory.findIndex(h => h.dbId === newDbId);
                         if (idx >= 0) newHistory[idx] = orderData; else newHistory.unshift(orderData);
-                        setHistory(newHistory); localStorage.setItem('weiwei_history_v2', JSON.stringify(newHistory));
-                        
-                        // 單機版扣庫存展示
-                        if (!currentOrderId) {
-                            let updatedInventory = [...inventory];
-                            for (const item of summary.items) {
-                                const pIdx = updatedInventory.findIndex(x => x.id === item.baseId);
-                                if (pIdx > -1) {
-                                    if (item.type === '一般') {
-                                        updatedInventory[pIdx].stock -= item.qty;
-                                    } else if (item.type === '另價') {
-                                        const pKey = item.price.toString();
-                                        if(updatedInventory[pIdx].extraStocks && updatedInventory[pIdx].extraStocks[pKey]) {
-                                            updatedInventory[pIdx].extraStocks[pKey] -= item.qty;
-                                        }
-                                    }
-                                }
-                            }
-                            setInventory(updatedInventory);
-                        }
-
+                        setHistory(newHistory);
+                        localStorage.setItem('weiwei_history_v2', JSON.stringify(newHistory));
+                        if(!currentOrderId) setInventory(updatedInventory);
                     } else {
                         await fetchGas("saveOrder", orderData);
-                        let updatedInventory = [...inventory];
                         if (!currentOrderId) {
-                            for (const item of summary.items) {
-                                const pIdx = updatedInventory.findIndex(x => x.id === item.baseId);
-                                if (pIdx > -1) {
-                                    if (item.type === '一般') {
-                                        updatedInventory[pIdx].stock -= item.qty;
-                                    } else if (item.type === '另價') {
-                                        const pKey = item.price.toString();
-                                        // 確保物件存在
-                                        if(!updatedInventory[pIdx].extraStocks) updatedInventory[pIdx].extraStocks = {};
-                                        // 若原本沒有該價位的庫存，扣除後會變負數，這符合邏輯 (賣出大於現有庫存)
-                                        updatedInventory[pIdx].extraStocks[pKey] = (updatedInventory[pIdx].extraStocks[pKey] || 0) - item.qty;
-                                    }
-                                }
-                            }
                             await fetchGas("saveInventory", minifyInventory(updatedInventory));
                             setInventory(updatedInventory);
                         }
+
                         let newHistory = [...history];
                         const idx = newHistory.findIndex(h => h.dbId === newDbId);
-<!-- ... existing code ... -->
+                        if (idx >= 0) newHistory[idx] = orderData; else newHistory.unshift(orderData);
+                        newHistory.sort((a,b) => b.timestampMs - a.timestampMs); 
+                        setHistory(newHistory);
+                    }
+
+                    setCurrentOrderId(newDbId);
+                    setShowBill(true); 
+                    window.scrollTo(0,0);
+                } catch (e) {
+                    console.error(e);
+                    setSysMsg({ type: 'error', title: '產出失敗', text: '無法將訂單存入 Google 表單，請檢查連線。' });
+                } finally { setIsSyncing(false); }
+            };
+
+            const handleConfirmAction = async () => {
+                if (!confirmAction) return;
+                if (confirmAction.type === 'reset' || confirmAction.type === 'next') {
+                    clearAllState();
+                } else if (confirmAction.type === 'deleteHistory') {
+                    setIsSyncing(true);
+                    if (isLocalMode) {
+                        const newHistory = history.filter(h => h.dbId !== confirmAction.id);
+                        setHistory(newHistory);
+                        localStorage.setItem('weiwei_history_v2', JSON.stringify(newHistory));
+                        if(currentOrderId === confirmAction.id) setCurrentOrderId(null);
+                    } else {
+                        try {
+                            await fetchGas("deleteOrder", { dbId: confirmAction.id });
+                            const newHistory = history.filter(h => h.dbId !== confirmAction.id);
+                            setHistory(newHistory);
+                            if(currentOrderId === confirmAction.id) setCurrentOrderId(null);
+                        } catch(e) {
+                            setSysMsg({ type: 'error', title: '刪除失敗', text: '無法從雲端刪除訂單。' });
+                        }
+                    }
+                    setIsSyncing(false);
+                    setConfirmAction(null);
+                }
+            };
+
+            const handleScreenshot = async () => {
+                const element = document.getElementById('capture-target');
+                if (!element) return;
+                const btn = document.getElementById('btn-screenshot');
+                const originalText = btn.innerHTML;
+                btn.innerText = "生成中..."; btn.disabled = true;
+                
+                try {
+                    await new Promise(resolve => setTimeout(resolve, 300));
+                    const canvas = await html2canvas(element, { 
+                        scale: 2, useCORS: true, backgroundColor: '#ffffff', logging: false,
+                        windowWidth: 800, width: 800,       
+                        onclone: (clonedDoc) => {
+                            const target = clonedDoc.getElementById('capture-target');
+                            if (target) { target.style.width = '800px'; target.style.minWidth = '800px'; target.style.maxWidth = '800px'; }
+                            const container = clonedDoc.getElementById('preview-container');
+                            if (container) { container.style.width = '800px'; container.style.minWidth = '800px'; container.style.maxWidth = 'none'; container.style.overflow = 'visible'; }
+                        }
+                    });
+                    const imgData = canvas.toDataURL("image/png");
+                    const displayName = orderer.isHandwritten ? '手寫單' : orderer.name;
+                    if (navigator.share) {
+                        canvas.toBlob(async (blob) => {
+                            const file = new File([blob], `葳葳海鮮訂單_${displayName}.png`, { type: "image/png" });
+                            try { await navigator.share({ files: [file], title: '葳葳海鮮訂單', text: `這是 ${displayName} 的訂單` }); } catch (err) { setScreenshotUrl(imgData); }
+                        }, 'image/png');
+                    } else { setScreenshotUrl(imgData); }
+                } catch (error) { 
+                    setSysMsg({ type: 'error', title: '生成失敗', text: '處理圖片時發生錯誤。' }); 
+                } finally { 
+                    btn.innerHTML = originalText; btn.disabled = false; 
+                }
+            };
+
+            // 若還沒準備好連線，且不是本機模式，顯示 Loading
+            if (!dbReady && !isLocalMode) {
+                return (
+                    <div className="min-h-screen flex flex-col items-center justify-center bg-slate-100 p-4">
+                        {!initError ? (
+                            <div className="flex flex-col items-center">
+                                <svg className="animate-spin w-12 h-12 text-sky-600 mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                    <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" strokeOpacity="0.25"></circle>
+                                    <path fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                                <h2 className="text-xl font-bold text-slate-700 mb-2">Google 試算表連線中...</h2>
+                                <p className="text-sm text-slate-500 mb-6">正在同步表單資料庫，請稍候</p>
+                                <button onClick={startLocalMode} className="mt-8 px-6 py-2 rounded-full border-2 border-slate-300 text-slate-500 font-bold hover:bg-slate-200 transition-colors">
+                                    略過連線，直接使用單機版
+                                </button>
+                            </div>
+                        ) : (
+                            <div className="bg-white p-6 md:p-8 rounded-[2rem] shadow-2xl max-w-[90%] md:max-w-md w-full text-center flex flex-col items-center animate-in zoom-in-95 duration-300">
+                                <div className="text-amber-500 mb-4 bg-amber-50 p-4 rounded-full">
+                                    <Icons.CloudOff />
+                                </div>
+                                <h2 className="text-2xl font-black text-slate-800 mb-3">無法連線至雲端</h2>
+                                <p className="text-slate-600 font-bold mb-6 text-sm whitespace-pre-line">
+                                    {initError}
+                                    {"\n\n請確認您是否已經將 GAS_URL 替換成您的專屬網址。"}
+                                </p>
+                                <button onClick={startLocalMode} className="w-full py-3 md:py-4 rounded-xl font-black text-lg md:text-xl bg-slate-800 text-white shadow-lg active:scale-95 transition-transform flex items-center justify-center gap-2 mb-3">
+                                    強制進入單機測試模式
+                                </button>
+                                <button onClick={() => {setInitError(null); loadDataFromGAS();}} className="w-full py-3 md:py-4 rounded-xl font-bold text-lg text-slate-600 bg-slate-100 hover:bg-slate-200 active:scale-95 transition-transform flex items-center justify-center gap-2">
+                                    <Icons.RefreshCw /> 重新嘗試連線
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                );
+            }
+
+            const footerRowCount = summary.actualDisc > 0 ? 4 : 3; 
+
+            return (
+                <div className="min-h-screen p-3 md:p-8 flex flex-col items-center relative">
+                    
+                    {/* 全局 Loading 遮罩 */}
+                    {isSyncing && (
+                        <div className="fixed inset-0 bg-white/70 backdrop-blur-sm z-[10000] flex flex-col items-center justify-center">
+                            <svg className="animate-spin w-16 h-16 text-sky-600 mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" strokeOpacity="0.25"></circle>
+                                <path fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                            <span className="text-xl font-black text-sky-800 tracking-widest">雲端同步中...</span>
+                        </div>
+                    )}
+
+                    {/* 系統提示視窗 */}
+                    {sysMsg && (
+                        <div className="modal-overlay" onClick={() => setSysMsg(null)}>
+                            <div className="bg-white p-6 md:p-8 rounded-3xl max-w-[90%] md:max-w-md w-full shadow-2xl flex flex-col items-center text-center max-h-[85vh] animate-in zoom-in-95 duration-300" onClick={e => e.stopPropagation()}>
+                                {sysMsg.type === 'import_success' ? (
+                                    <div className="[&>svg]:w-12 [&>svg]:h-12 md:[&>svg]:w-16 md:[&>svg]:h-16 text-emerald-500 mb-4 bg-emerald-50 p-4 rounded-full"><Icons.CheckCircle /></div>
+                                ) : sysMsg.type === 'error' ? (
+                                    <div className="[&>svg]:w-12 [&>svg]:h-12 md:[&>svg]:w-16 md:[&>svg]:h-16 text-rose-500 mb-4 bg-rose-50 p-4 rounded-full"><Icons.Alert /></div>
+                                ) : (
+                                    <div className="[&>svg]:w-12 [&>svg]:h-12 md:[&>svg]:w-16 md:[&>svg]:h-16 text-amber-500 mb-4 bg-amber-50 p-4 rounded-full"><Icons.Alert /></div>
+                                )}
+                                <h3 className="text-2xl md:text-3xl font-black text-slate-800 mb-2">{sysMsg.title}</h3>
+                                <p className="text-sm md:text-base text-slate-500 font-bold mb-6 leading-relaxed whitespace-pre-line">{sysMsg.text}</p>
+                                <button onClick={() => setSysMsg(null)} className="w-full py-3 md:py-4 rounded-xl font-black text-xl md:text-2xl bg-slate-900 text-white shadow-lg active:scale-95 transition-transform">確認</button>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* 更新日誌視窗 */}
+                    {showChangelog && (
+                        <div className="modal-overlay" onClick={()=>setShowChangelog(false)}>
+                            <div className="bg-white rounded-[2rem] w-full max-w-[95%] md:max-w-lg max-h-[85vh] flex flex-col shadow-2xl animate-in zoom-in-95 duration-300" onClick={e=>e.stopPropagation()}>
+                                <div className="p-4 md:p-6 bg-purple-800 text-white rounded-t-[2rem] flex justify-between items-center">
+                                    <h2 className="text-xl md:text-2xl font-black flex items-center gap-2"><Icons.FileText /> 系統更新日誌</h2>
+                                    <button onClick={()=>setShowChangelog(false)}><Icons.Close /></button>
+                                </div>
+                                <div className="p-5 md:p-8 overflow-y-auto space-y-6 custom-scrollbar text-slate-700 bg-slate-50">
+                                    <div className="relative pl-4 border-l-4 border-purple-500">
+                                        <h3 className="font-black text-lg text-purple-800 mb-1">v0803 (穩定版)</h3>
+                                        <p className="text-xs text-slate-400 mb-2 font-bold">2026/08/03</p>
+                                        <ul className="list-disc pl-4 space-y-1 text-sm font-bold text-slate-600">
+                                            <li><span className="text-purple-600">修正嚴重崩潰</span>：修正 React 渲染週期錯誤，解決畫面一片空白與 Error #310 的問題。</li>
+                                            <li><span className="text-purple-600">多單價庫存</span>：現在不僅能多單價結帳，還能在庫存管理面板中，針對不同單價各別管理剩餘庫存！</li>
+                                            <li><span className="text-purple-600">自動扣庫存</span>：產出新訂單時，系統會自動將對應的數量從主庫存或「另價庫存」中扣除，並同步到 Google 表單。</li>
+                                        </ul>
+                                    </div>
+                                    <div className="relative pl-4 border-l-4 border-slate-300">
+                                        <h3 className="font-black text-lg text-slate-700 mb-1">v0802-GAS (Google 表單雲端版)</h3>
+                                        <p className="text-xs text-slate-400 mb-2 font-bold">歷史版本</p>
+                                        <ul className="list-disc pl-4 space-y-1 text-sm font-bold text-slate-500">
+                                            <li>更換資料庫引擎：以 Google Apps Script 取代 Firebase。</li>
+                                        </ul>
+                                    </div>
+                                </div>
+                                <div className="p-4 bg-white border-t border-slate-100 rounded-b-[2rem]">
+                                    <button onClick={()=>setShowChangelog(false)} className="w-full py-3 bg-purple-100 text-purple-800 rounded-xl font-black text-lg shadow-sm active:scale-95 transition-transform">我知道了</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* 報價視窗 */}
+                    {showPriceModal && (
+                        <div className="fixed inset-0 z-[9998] bg-black/80 flex items-center justify-center p-4">
+                            <div className="bg-white rounded-[2rem] w-full max-w-[95%] md:max-w-lg max-h-[90vh] flex flex-col shadow-2xl animate-in zoom-in-95 duration-300">
+                                <div className="p-4 md:p-6 bg-sky-800 text-white rounded-t-[2rem] flex justify-between items-center shadow-md z-10">
+                                    <h2 className="text-2xl md:text-3xl font-black flex items-center gap-2 md:gap-3"><Icons.Dollar /> 今日報價總覽</h2>
+                                </div>
+                                <div className="p-4 md:p-6 overflow-y-auto flex-1 bg-slate-50 space-y-3 md:space-y-4 custom-scrollbar">
+                                    <p className="text-slate-500 font-bold mb-2 text-sm md:text-lg">確認或修改今日各品項單價：<br/><span className="text-sky-700 text-xs md:text-sm">(修改後將儲存至 Google 試算表，今日接單皆使用此價格)</span></p>
+                                    {inventory.map(p => (
+                                        <div key={`price-${p.id}`} className="flex flex-col bg-white p-3 md:p-4 rounded-2xl border-2 border-slate-200 shadow-sm hover:border-sky-300 transition-colors">
+                                            <div className="font-black text-lg md:text-xl text-slate-800 leading-tight mb-2 flex items-baseline justify-between">
+                                                <span>{p.name}</span>
+                                                <span className="text-xs md:text-sm font-bold text-slate-400">{p.unit}</span>
+                                            </div>
+                                            <div className="flex gap-2 md:gap-3">
+                                                {p.defJinPrice !== undefined && (
+                                                    <div className="flex-1 flex items-center bg-indigo-50 rounded-xl p-1.5 md:p-2 border-2 border-indigo-200 focus-within:border-indigo-400 focus-within:bg-white transition-colors min-w-0">
+                                                        <span className="text-indigo-700 font-bold text-xs md:text-sm mr-1 shrink-0 whitespace-nowrap">斤價$</span>
+                                                        <input type="number" value={jinPrices[p.id]} onChange={e => setJinPrices({...jinPrices, [p.id]: parseInt(e.target.value) || 0})} className="w-full min-w-0 text-center text-lg md:text-2xl font-black bg-transparent outline-none text-slate-800" />
+                                                    </div>
+                                                )}
+                                                <div className="flex-1 flex items-center bg-amber-50 rounded-xl p-1.5 md:p-2 border-2 border-amber-200 focus-within:border-amber-400 focus-within:bg-white transition-colors min-w-0">
+                                                    <span className="text-amber-700 font-bold text-xs md:text-sm mr-1 shrink-0 whitespace-nowrap">單價$</span>
+                                                    <input type="number" value={stdPrices[p.id]} onChange={e => setStdPrices({...stdPrices, [p.id]: parseInt(e.target.value) || 0})} className="w-full min-w-0 text-center text-lg md:text-2xl font-black bg-transparent outline-none text-slate-800" />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                                <div className="p-3 md:p-4 bg-white border-t-4 border-slate-100 rounded-b-[2rem]">
+                                    <button onClick={savePricesToDb} className="w-full bg-sky-700 text-white py-3 md:py-4 rounded-xl font-black text-lg md:text-xl shadow-lg active:scale-95 transition-transform flex items-center justify-center gap-2">
+                                        <Icons.Check /> 儲存並開始接單
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* 庫存管理視窗 (進化多單價版) */}
+                    {showInventoryPanel && (
+                        <div className="modal-overlay" onClick={()=>setShowInventoryPanel(false)}>
+                            <div className="bg-white rounded-[2rem] w-full max-w-[95%] md:max-w-lg max-h-[90vh] flex flex-col shadow-2xl animate-in zoom-in-95 duration-300" onClick={e=>e.stopPropagation()}>
+                                <div className="p-4 md:p-6 bg-amber-600 text-white rounded-t-[2rem] flex justify-between items-center shadow-md z-10">
+                                    <h2 className="text-xl md:text-2xl font-black flex items-center gap-2 md:gap-3"><Icons.Package /> 庫存管理</h2>
                                     <button onClick={()=>setShowInventoryPanel(false)}><Icons.Close /></button>
                                 </div>
-                                <div className="p-4 md:p-6 overflow-y-auto flex-1 bg-slate-50 space-y-3 custom-scrollbar">
-                                    <p className="text-slate-500 font-bold mb-2 text-sm md:text-base">設定各品項及不同單價的庫存量：<br/><span className="text-amber-600 text-xs md:text-sm">(開單時，系統將自動扣除對應單價的庫存)</span></p>
+                                <div className="p-4 md:p-6 overflow-y-auto flex-1 bg-slate-50 space-y-3 md:space-y-4 custom-scrollbar">
+                                    <p className="text-slate-500 font-bold mb-2 text-sm md:text-base">手動調整各品項的剩餘數量：<br/><span className="text-amber-600 text-xs md:text-sm">(包含開單區設定的「另價」商品庫存)</span></p>
                                     {inventory.map(p => {
-                                        // 找出目前在開單區已經設定的「另價」有哪些，顯示在庫存面板中
+                                        // 找出目前在開單區已經設定的「另價」有哪些
                                         const activeExtraPrices = (extraStdItems[p.id] || []).map(ext => parseInt(ext.price)).filter(val => !isNaN(val) && val > 0);
-                                        // 將資料庫中既有的 extraStocks 價格鍵也抓出來
+                                        // 找出資料庫中既有的 extraStocks 價格鍵
                                         const savedExtraPrices = Object.keys(p.extraStocks || {}).map(k => parseInt(k));
-                                        
                                         // 合併並去重
                                         const allExtraPrices = [...new Set([...activeExtraPrices, ...savedExtraPrices])].sort((a,b)=>a-b);
 
                                         return (
-                                            <div key={p.id} className="flex flex-col bg-white p-3 md:p-4 rounded-2xl border-2 border-slate-200 mb-2">
-                                                {/* 預設單價的庫存 */}
+                                            <div key={`inv-${p.id}`} className="flex flex-col bg-white p-3 md:p-4 rounded-2xl border-2 border-slate-200 shadow-sm hover:border-amber-300 transition-colors">
+                                                {/* 主庫存 */}
                                                 <div className="flex items-center justify-between mb-2">
-                                                    <div className="font-black text-base md:text-lg">
+                                                    <div className="font-black text-base md:text-lg text-slate-800 leading-tight">
                                                         {p.name} <span className="text-sm text-slate-400 font-normal ml-1">(${stdPrices[p.id] || p.defPrice})</span>
                                                     </div>
-                                                    <div className="flex items-center bg-slate-100 rounded-xl p-1 md:p-1.5 border-2">
-                                                        <button onClick={() => setInventory(inventory.map(x=>x.id===p.id?{...x,stock:x.stock-1}:x))} className="px-3 py-1 bg-white rounded-lg shadow-sm font-bold text-slate-600">-</button>
-                                                        <input type="number" value={p.stock} onChange={e => setInventory(inventory.map(x=>x.id===p.id?{...x,stock:parseInt(e.target.value)||0}:x))} className="w-12 md:w-16 text-center text-lg font-black bg-transparent outline-none" />
-                                                        <button onClick={() => setInventory(inventory.map(x=>x.id===p.id?{...x,stock:x.stock+1}:x))} className="px-3 py-1 bg-white rounded-lg shadow-sm font-bold text-slate-600">+</button>
+                                                    <div className="flex items-center bg-slate-100 rounded-xl p-1 md:p-1.5 border-2 border-slate-200">
+                                                        <button onClick={() => updateStockLocal(p.id, null, p.stock - 1)} className="px-3 py-1 bg-white rounded-lg shadow-sm text-lg font-bold text-slate-600 active:bg-slate-200">-</button>
+                                                        <input type="number" value={p.stock} onChange={e => updateStockLocal(p.id, null, e.target.value)} className="w-16 md:w-20 text-center text-lg md:text-xl font-black bg-transparent outline-none text-slate-800" />
+                                                        <button onClick={() => updateStockLocal(p.id, null, p.stock + 1)} className="px-3 py-1 bg-white rounded-lg shadow-sm text-lg font-bold text-slate-600 active:bg-slate-200">+</button>
                                                     </div>
                                                 </div>
                                                 
-                                                {/* 多單價的庫存列表 */}
+                                                {/* 多單價庫存列表 */}
                                                 {allExtraPrices.length > 0 && (
                                                     <div className="pl-4 border-l-2 border-slate-100 space-y-2 mt-1">
                                                         {allExtraPrices.map(price => {
                                                             const currentStock = p.extraStocks ? (p.extraStocks[price] || 0) : 0;
                                                             return (
-                                                                <div key={price} className="flex items-center justify-between">
+                                                                <div key={`extra-inv-${price}`} className="flex items-center justify-between">
                                                                     <div className="text-sm font-bold text-purple-700">
                                                                         👉 單價 ${price} 庫存
                                                                     </div>
                                                                     <div className="flex items-center bg-purple-50 rounded-xl p-1 border border-purple-100">
-                                                                        <button onClick={() => handleExtraStockChange(p.id, price, currentStock - 1)} className="px-2 py-0.5 bg-white rounded-lg shadow-sm font-bold text-purple-600 text-sm">-</button>
-                                                                        <input type="number" value={currentStock} onChange={e => handleExtraStockChange(p.id, price, e.target.value)} className="w-10 md:w-12 text-center text-sm font-black bg-transparent outline-none text-purple-900" />
-                                                                        <button onClick={() => handleExtraStockChange(p.id, price, currentStock + 1)} className="px-2 py-0.5 bg-white rounded-lg shadow-sm font-bold text-purple-600 text-sm">+</button>
+                                                                        <button onClick={() => updateStockLocal(p.id, price, currentStock - 1)} className="px-2 py-0.5 bg-white rounded-lg shadow-sm font-bold text-purple-600 text-sm active:bg-purple-100">-</button>
+                                                                        <input type="number" value={currentStock} onChange={e => updateStockLocal(p.id, price, e.target.value)} className="w-10 md:w-12 text-center text-sm font-black bg-transparent outline-none text-purple-900" />
+                                                                        <button onClick={() => updateStockLocal(p.id, price, currentStock + 1)} className="px-2 py-0.5 bg-white rounded-lg shadow-sm font-bold text-purple-600 text-sm active:bg-purple-100">+</button>
                                                                     </div>
                                                                 </div>
                                                             )
@@ -213,39 +730,595 @@
                                     })}
                                 </div>
                                 <div className="p-3 md:p-4 bg-white border-t-4 border-slate-100 rounded-b-[2rem]">
-<!-- ... existing code ... -->
+                                    <button onClick={handleFinishInventory} className="w-full bg-slate-800 text-white py-3 md:py-4 rounded-xl font-black text-lg md:text-xl shadow-lg active:scale-95 transition-transform flex items-center justify-center gap-2">更新至雲端</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* 確認視窗 */}
+                    {confirmAction && (
+                        <div className="modal-overlay" onClick={()=>setConfirmAction(null)}>
+                            <div className="bg-white p-6 md:p-8 rounded-3xl max-w-[90%] md:max-w-sm w-full shadow-2xl flex flex-col items-center text-center" onClick={e=>e.stopPropagation()}>
+                                <div className="[&>svg]:w-12 [&>svg]:h-12 md:[&>svg]:w-16 md:[&>svg]:h-16 text-amber-500 mb-4 bg-amber-50 p-4 rounded-full"><Icons.Alert /></div>
+                                <h3 className="text-2xl md:text-3xl font-black text-slate-800 mb-2">
+                                    {confirmAction.type === 'reset' ? '確定要清空嗎？' : confirmAction.type === 'next' ? '確定開下一單？' : '確定刪除此紀錄？'}
+                                </h3>
+                                <p className="text-sm md:text-base text-slate-500 mb-8 font-bold">
+                                    {confirmAction.type === 'reset' ? '畫面上的資料將被清除。' : confirmAction.type === 'next' ? '這會為您清空數量以開始接單。' : '這會從雲端永久刪除這筆訂單。'}
+                                </p>
+                                <div className="flex gap-3 w-full">
+                                    <button onClick={()=>setConfirmAction(null)} className="flex-1 py-3 md:py-4 rounded-xl font-bold text-lg md:text-xl bg-slate-100 text-slate-600 active:scale-95 transition-transform">取消</button>
+                                    <button onClick={handleConfirmAction} className="flex-1 py-3 md:py-4 rounded-xl font-black text-lg md:text-xl bg-rose-600 text-white shadow-lg active:scale-95 transition-transform">確定</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* 歷史紀錄 */}
+                    {showHistory && (
+                        <div className="fixed inset-0 z-50 flex justify-end">
+                            <div className="absolute inset-0 bg-black/50" onClick={()=>setShowHistory(false)}></div>
+                            <div className="relative bg-white w-80 max-w-[85%] h-full shadow-2xl flex flex-col drawer-transition animate-in slide-in-from-right duration-300">
+                                <div className="p-4 bg-sky-800 text-white font-black text-lg md:text-xl flex justify-between items-center">
+                                    <span>📜 {isLocalMode ? '單機' : '表單'}歷史訂單</span>
+                                    <button onClick={()=>setShowHistory(false)}><Icons.Close /></button>
+                                </div>
+                                <div className="flex-1 overflow-y-auto p-2">
+                                    {history.length === 0 && <p className="p-4 text-gray-400 text-center text-sm">尚無紀錄</p>}
+                                    {history.map(record => (
+                                        <div key={record.dbId} className={`p-3 md:p-4 border-b border-gray-100 flex items-center justify-between group ${currentOrderId === record.dbId ? 'bg-sky-50' : 'bg-white'}`}>
+                                            <div className="flex-1 cursor-pointer overflow-hidden" onClick={()=>loadFromHistory(record)}>
+                                                <div className="flex justify-between items-center mb-1">
+                                                    <span className="font-black text-base md:text-lg text-slate-800 truncate pr-2">
+                                                        {record.orderer.isHandwritten ? '(手寫單)' : (record.orderer.name || '未命名')}
+                                                    </span>
+                                                    <span className="text-[10px] md:text-xs text-gray-400 whitespace-nowrap">{record.timestampStr.split(' ')[0]}</span>
+                                                </div>
+                                                <div className="text-xs md:text-sm text-gray-500">
+                                                    總額: <span className="text-red-600 font-bold">${record.grandTotal || 0}</span>
+                                                    {record.paymentStatus === 'paid' && <span className="ml-1 text-[10px] bg-emerald-100 text-emerald-700 px-1 rounded">已付</span>}
+                                                </div>
+                                            </div>
+                                            <button onClick={(e) => { e.stopPropagation(); setConfirmAction({ type: 'deleteHistory', id: record.dbId }); }} className="ml-2 p-2 text-gray-300 hover:text-red-500 transition-colors">
+                                                <Icons.Trash />
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* 熱感應貼紙用區塊 */}
+                    <div id="thermal-receipt">
+                        <div className="thermal-header">
+                            <div className="thermal-title">葳葳海鮮</div>
+                            <div className="thermal-meta">訂單日期: {new Date().toLocaleString('zh-TW')}</div>
+                        </div>
+                        <div className="thermal-info">
+                            <div style={{flex: 1}}>
+                                <div className="thermal-customer">{orderer.isHandwritten ? '姓名：________________' : orderer.name}</div>
+                                {orderer.phone && <div className="thermal-phone">{orderer.phone}</div>}
+                                {orderer.address && <div className="thermal-address">{orderer.address}</div>}
+                            </div>
+                            <div style={{textAlign: 'right', paddingLeft: '20px'}}>
+                                {paymentStatus === 'paid' && <div className="thermal-status">已付款</div>}
+                                {paymentStatus === 'credit' && <div className="thermal-status">餘${creditAmount}</div>}
+                            </div>
+                        </div>
+                        <table className="thermal-table">
+                            <thead>
+                                <tr>
+                                    <th style={{width: '50%'}}>品項</th>
+                                    <th style={{width: '20%', textAlign:'center'}}>單價</th>
+                                    <th style={{width: '10%', textAlign:'center'}}>量</th>
+                                    <th style={{width: '20%', textAlign:'right'}}>小計</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {summary.items.map((i, idx) => {
+                                    const isSameAsPrev = idx > 0 && i.baseId && summary.items[idx - 1].baseId === i.baseId && (i.type === '一般' || i.type === '另價') && (summary.items[idx - 1].type === '一般' || summary.items[idx - 1].type === '另價');
+                                    return (
+                                        <tr key={`thermal-${idx}`}>
+                                            <td style={{fontWeight: 400, fontSize: '48px', color: !isSameAsPrev ? '#000' : 'transparent'}}>
+                                                {!isSameAsPrev ? (
+                                                    <>
+                                                        {i.name}
+                                                        {(i.type === '一般' || i.type === '另價') && jinPrices[i.baseId || i.id] !== undefined && <span style={{fontSize:'36px', marginLeft:'10px'}}>(${jinPrices[i.baseId || i.id]}/斤)</span>}
+                                                        {i.type === '分享' && <span style={{fontSize:'32px', marginLeft:'10px', border:'2px solid black', padding:'2px 8px', borderRadius:'8px', fontWeight:'900'}}>分享</span>}
+                                                        {i.type === '限定' && <span style={{fontSize:'32px', marginLeft:'10px', border:'2px solid black', padding:'2px 8px', borderRadius:'8px', fontWeight:'900'}}>限定</span>}
+                                                    </>
+                                                ) : null}
+                                            </td>
+                                            <td style={{textAlign:'center', fontWeight: 400, fontSize: '48px'}}>{i.price}</td>
+                                            <td style={{textAlign:'center', fontWeight: 400, fontSize: '48px'}}>{i.qty}</td>
+                                            <td style={{textAlign:'right', fontWeight: 400, fontSize: '48px'}}>{i.total}</td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                        <div className="thermal-footer">
+                            <div className="thermal-total-row">
+                                <span className="thermal-total-label">小計</span>
+                                <span className="thermal-total-amount" style={{fontSize: '40px'}}>${summary.subtotal}</span>
+                            </div>
+                            <div className="thermal-total-row">
+                                <span className="thermal-total-label">運費</span>
+                                <span className="thermal-total-amount" style={{fontSize: '40px'}}>+{summary.actualShip}</span>
+                            </div>
+                            {summary.actualDisc > 0 && (
+                                <div className="thermal-total-row">
+                                    <span className="thermal-total-label">折讓</span>
+                                    <span className="thermal-total-amount" style={{fontSize: '40px'}}>-{summary.actualDisc}</span>
+                                </div>
+                            )}
+                            <div className="thermal-total-row" style={{marginTop: '20px', borderTop: '4px solid black', paddingTop: '10px'}}>
+                                <span className="thermal-total-label" style={{fontSize: '50px'}}>總額</span>
+                                <span className="thermal-total-amount" style={{fontSize: '90px'}}>${summary.grandTotal}</span>
+                            </div>
+                            <div className="thermal-contact">
+                                <div style={{fontSize: '32px', marginBottom: '15px', borderBottom: '2px solid black', display: 'inline-block'}}>【匯款與聯絡資訊】</div>
+                                <div style={{fontSize: '36px', lineHeight: '1.2'}}>郵局(700)</div>
+                                <div style={{fontSize: '52px', lineHeight: '1.2', marginBottom: '15px'}}>0191289-0858464</div>
+                                <div style={{fontSize: '36px', lineHeight: '1.2'}}>吳庭葳</div>
+                                <div style={{fontSize: '44px', lineHeight: '1.2'}}>0910-745-919</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* 視圖切換區塊 */}
+                    {!showBill ? (
+                        <div className="w-full max-w-4xl space-y-6 md:space-y-10 pb-28 md:pb-24">
+                            <div className="flex justify-between items-center no-print sticky top-2 z-20">
+                                <div className="flex gap-1.5 md:gap-2">
+                                    <button onClick={()=>setShowPriceModal(true)} className="flex items-center gap-1 bg-white/90 backdrop-blur text-sky-800 px-3 py-2 md:px-4 md:py-3 rounded-full shadow-lg font-bold border border-sky-100 text-[13px] md:text-lg">
+                                        <Icons.Dollar /> <span className="hidden md:inline">報價</span>
+                                    </button>
+                                    <button onClick={()=>setShowInventoryPanel(true)} className="flex items-center gap-1 bg-white/90 backdrop-blur text-amber-700 px-3 py-2 md:px-4 md:py-3 rounded-full shadow-lg font-bold border border-amber-200 text-[13px] md:text-lg">
+                                        <Icons.Package /> <span className="hidden md:inline">庫存</span>
+                                    </button>
+                                    <button onClick={()=>setShowHistory(true)} className="flex items-center gap-1 bg-white/90 backdrop-blur text-sky-800 px-3 py-2 md:px-4 md:py-3 rounded-full shadow-lg font-bold border border-sky-100 text-[13px] md:text-lg">
+                                        <Icons.History /> <span className="hidden md:inline">歷史</span>
+                                    </button>
+                                    <button onClick={()=>setShowChangelog(true)} className="flex items-center gap-1 bg-white/90 backdrop-blur text-purple-700 px-3 py-2 md:px-4 md:py-3 rounded-full shadow-lg font-bold border border-purple-200 text-[13px] md:text-lg">
+                                        <Icons.FileText /> <span className="hidden md:inline">日誌</span>
+                                    </button>
+                                </div>
+                                <button onClick={()=>setConfirmAction({ type: 'reset' })} className="flex items-center gap-1 bg-rose-500 text-white px-3 py-2 md:px-5 md:py-3 rounded-full shadow-lg font-bold border border-rose-600 active:scale-95 transition-transform text-[13px] md:text-lg">
+                                    <Icons.Refresh /> <span className="inline">清空</span>
+                                </button>
+                            </div>
+
+                            <header className="flex items-center gap-3 md:gap-4 border-b-4 md:border-b-8 border-sky-800 pb-4 md:pb-6 mt-2 md:mt-4">
+                                <div className="bg-sky-800 p-3 md:p-4 rounded-2xl md:rounded-3xl text-white shadow-lg"><Icons.Anchor /></div>
+                                <div>
+                                    <h1 className="text-3xl md:text-5xl font-black text-sky-900 tracking-tight">葳葳海鮮</h1>
+                                    <p className="text-slate-500 font-bold text-lg md:text-2xl mt-1 flex items-center flex-wrap gap-2">
+                                        雲端訂購系統 
+                                        {isLocalMode ? (
+                                            <span className="text-[10px] md:text-xs bg-slate-200 text-slate-600 px-2 py-1 rounded-full font-bold">單機模式</span>
+                                        ) : (
+                                            <span className="text-[10px] md:text-xs bg-emerald-100 text-emerald-700 px-2 py-1 rounded-full font-bold">📝 表單已連線</span>
+                                        )}
+                                        <span className="text-[10px] md:text-xs bg-sky-100 text-sky-700 px-2 py-1 rounded-full font-bold cursor-pointer" onClick={()=>setShowChangelog(true)}>v0803 更新</span>
+                                    </p>
+                                </div>
+                            </header>
+
+                            <section className="bg-white p-5 md:p-8 rounded-3xl md:rounded-[2rem] shadow-xl border-2 md:border-4 border-slate-100">
+                                <h2 className="text-2xl md:text-3xl font-black mb-4 md:mb-6 flex items-center gap-2 md:gap-3 text-slate-800">👤 填寫訂購人</h2>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-8">
+                                    <div className="space-y-2 md:space-y-3">
+                                        <div className="flex justify-between items-center">
+                                            <label className="font-black text-slate-600 text-lg md:text-xl">姓名 {(!orderer.isHandwritten) && '(必填)'}</label>
+                                            <label className="flex items-center gap-1 md:gap-2 cursor-pointer bg-slate-100 hover:bg-slate-200 transition-colors px-2 py-1 rounded-lg border-2 border-slate-200">
+                                                <input type="checkbox" className="w-4 h-4 md:w-5 md:h-5 accent-slate-800" checked={orderer.isHandwritten} onChange={e=>setOrderer({...orderer, isHandwritten: e.target.checked})} />
+                                                <span className="font-bold text-slate-700 text-sm md:text-base">手寫單</span>
+                                            </label>
+                                        </div>
+                                        <input type="text" disabled={orderer.isHandwritten} placeholder={orderer.isHandwritten ? "產出後手寫" : ""} className={`w-full text-xl md:text-3xl p-3 md:p-5 bg-slate-50 border-2 border-slate-300 rounded-xl md:rounded-2xl font-bold text-black ${orderer.isHandwritten ? 'opacity-50 cursor-not-allowed' : ''}`} value={orderer.name} onChange={e=>setOrderer({...orderer, name:e.target.value})} />
+                                    </div>
+                                    <div className="space-y-2 md:space-y-3">
+                                        <label className="font-black text-slate-600 text-lg md:text-xl block">電話</label>
+                                        <input type="tel" className="w-full text-xl md:text-3xl p-3 md:p-5 bg-slate-50 border-2 border-slate-300 rounded-xl md:rounded-2xl font-bold text-black" value={orderer.phone} onChange={e=>setOrderer({...orderer, phone:e.target.value})} />
+                                    </div>
+                                    <div className="space-y-2 md:space-y-3 md:col-span-2">
+                                        <label className="font-black text-slate-600 text-lg md:text-xl block">寄送地址 (選填)</label>
+                                        <input type="text" className="w-full text-xl md:text-3xl p-3 md:p-5 bg-slate-50 border-2 border-slate-300 rounded-xl md:rounded-2xl font-bold text-black" value={orderer.address} onChange={e=>setOrderer({...orderer, address:e.target.value})} />
+                                    </div>
+                                </div>
+                                <div className="mt-6 md:mt-8 pt-4 md:pt-6 border-t-2 border-slate-100">
+                                    <label className="font-black text-slate-600 text-lg md:text-xl block mb-3 md:mb-4">訂單狀態</label>
+                                    <div className="flex flex-col md:flex-row gap-2 md:gap-3">
+                                        <div className="flex gap-2">
+                                            <label className={`flex-1 p-3 md:p-4 rounded-xl md:rounded-2xl border-4 cursor-pointer flex items-center justify-center gap-1 md:gap-2 transition-all ${paymentStatus === 'pending' ? 'bg-slate-100 border-slate-400 text-slate-800' : 'bg-white border-slate-200 text-slate-400'}`}>
+                                                <input type="radio" name="status" className="w-4 h-4 md:w-6 md:h-6 accent-slate-600" checked={paymentStatus === 'pending'} onChange={() => setPaymentStatus('pending')} />
+                                                <span className="font-black text-base md:text-xl whitespace-nowrap">待收款</span>
+                                            </label>
+                                            <label className={`flex-1 p-3 md:p-4 rounded-xl md:rounded-2xl border-4 cursor-pointer flex items-center justify-center gap-1 md:gap-2 transition-all ${paymentStatus === 'paid' ? 'bg-emerald-50 border-emerald-500 text-emerald-800' : 'bg-white border-slate-200 text-slate-400'}`}>
+                                                <input type="radio" name="status" className="w-4 h-4 md:w-6 md:h-6 accent-emerald-600" checked={paymentStatus === 'paid'} onChange={() => setPaymentStatus('paid')} />
+                                                <span className="font-black text-base md:text-xl whitespace-nowrap">已付款</span>
+                                            </label>
+                                        </div>
+                                        <div className={`flex-[1.5] p-3 md:p-4 rounded-xl md:rounded-2xl border-4 flex items-center gap-2 md:gap-3 transition-all ${paymentStatus === 'credit' ? 'bg-indigo-50 border-indigo-500' : 'bg-white border-slate-200'}`}>
+                                            <label className="flex items-center gap-1 md:gap-2 cursor-pointer whitespace-nowrap">
+                                                <input type="radio" name="status" className="w-4 h-4 md:w-6 md:h-6 accent-indigo-600" checked={paymentStatus === 'credit'} onChange={() => setPaymentStatus('credit')} />
+                                                <span className={`font-black text-base md:text-xl ${paymentStatus === 'credit' ? 'text-indigo-800' : 'text-slate-400'}`}>餘額</span>
+                                            </label>
+                                            <input type="number" placeholder="金額" disabled={paymentStatus !== 'credit'} value={creditAmount} onChange={e => setCreditAmount(e.target.value)} className="w-full bg-white border-2 border-slate-300 rounded-lg md:rounded-xl p-2 text-base md:text-xl font-bold text-center outline-none focus:border-indigo-500 disabled:bg-slate-100 disabled:text-slate-300 text-black min-w-0" />
+                                        </div>
+                                    </div>
+                                </div>
+                            </section>
+
+                            <section className="bg-white rounded-3xl md:rounded-[2rem] shadow-xl border-2 md:border-4 border-slate-100 overflow-hidden">
+                                <div className="bg-slate-100 p-4 md:p-6 border-b-2 md:border-b-4 border-slate-200 flex justify-between items-center">
+                                    <h2 className="font-black text-2xl md:text-3xl text-slate-800">🦐 標準品項</h2>
+                                    <span className="text-sm md:text-lg font-bold text-slate-500 bg-white px-2 md:px-4 py-1 md:py-2 rounded-lg md:rounded-xl border border-slate-300">自動算金額</span>
+                                </div>
+                                <div className="divide-y-2 divide-slate-100">
+                                    {inventory.map(p => {
+                                        const qty = parseInt(stdQtys[p.id]) || 0;
+                                        const price = parseInt(stdPrices[p.id]) || 0;
+                                        const sub = qty * price;
+                                        const extras = extraStdItems[p.id] || [];
+                                        const hasExtraSupport = [1, 2, 3].includes(p.id);
+                                        const isActive = qty > 0 || extras.length > 0;
+
+                                        return (
+                                            <div key={`item-${p.id}`} className={`p-4 md:p-6 transition-colors ${isActive ? 'bg-sky-50' : 'bg-white'}`}>
+                                                <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-2 md:gap-6">
+                                                    <div className="w-full md:w-auto flex-1">
                                                         <p className="text-xl md:text-3xl font-medium text-black mb-1 leading-tight flex justify-between items-center md:inline-flex w-full">
-                                                            <span>{p.name}{jinPrices[p.id] !== undefined && <span className="text-sky-700 font-bold ml-1 text-sm md:text-2xl whitespace-nowrap">(${jinPrices[p.id]}/斤)</span>}</span>
+                                                            <span>
+                                                                {p.name}
+                                                                {jinPrices[p.id] !== undefined && <span className="text-sky-700 font-bold ml-1 text-sm md:text-2xl whitespace-nowrap">(${jinPrices[p.id]}/斤)</span>}
+                                                            </span>
                                                             <span className="md:hidden text-xs bg-slate-100 text-slate-500 px-2 py-1 rounded-full font-bold whitespace-nowrap">庫存: {p.stock}</span>
                                                         </p>
                                                         <div className="flex items-center gap-2 mt-1">
                                                             <p className="text-slate-500 font-bold text-sm md:text-xl">{p.unit} <span className="text-xs md:text-lg font-normal ml-1 md:ml-2 bg-slate-100 px-1 md:px-2 rounded-md text-slate-600">{p.range ? `(參考:${p.range})` : ''}</span></p>
-                                                            <span className="hidden md:inline-flex text-sm bg-slate-100 text-slate-500 px-2 py-1 rounded-lg font-bold border border-slate-200">庫存: {p.stock}</span>
+                                                            <span className="hidden md:inline-flex text-sm bg-slate-100 text-slate-500 px-2 py-1 rounded-lg font-bold border border-slate-200 whitespace-nowrap">庫存: {p.stock}</span>
                                                         </div>
-                                                        {[1, 2, 3].includes(p.id) && (
-                                                            <button onClick={() => handleAddExtraAndInitStock(p.id)} className="mt-2 md:mt-3 text-[13px] md:text-sm bg-purple-100 text-purple-700 px-3 py-1.5 rounded-lg font-black flex items-center gap-1 w-fit border border-purple-200"><Icons.Plus /> 新增其他單價</button>
+                                                        {hasExtraSupport && (
+                                                            <button onClick={() => handleAddExtra(p.id)} className="mt-2 md:mt-3 text-[13px] md:text-sm bg-purple-100 text-purple-700 px-3 py-1.5 rounded-lg font-black hover:bg-purple-200 transition-colors flex items-center gap-1 w-fit border border-purple-200 shadow-sm active:scale-95">
+                                                                <Icons.Plus /> 新增其他單價
+                                                            </button>
                                                         )}
                                                     </div>
                                                     <div className="flex w-full md:w-auto items-center justify-between md:justify-end gap-2 md:gap-6 mt-2 md:mt-0">
-<!-- ... existing code ... -->
+                                                        <div className="text-center flex-1 md:flex-none min-w-0">
+                                                            <p className="text-[11px] md:text-lg font-bold text-slate-400 mb-1 md:mb-2">單價</p>
+                                                            <input type="number" disabled={!p.canEdit} value={stdPrices[p.id]} onChange={e=>setStdPrices({...stdPrices,[p.id]:parseInt(e.target.value)||0})} className={`w-full min-w-0 md:w-28 text-center text-lg md:text-3xl font-black py-1.5 md:py-3 rounded-lg md:rounded-2xl ${p.canEdit ? 'bg-amber-100 text-amber-900 border-2 md:border-4 border-amber-200 shadow-sm md:shadow-md focus:bg-white focus:border-amber-400' : 'bg-transparent text-black border-transparent'}`} />
+                                                        </div>
+                                                        <div className="text-center flex-1 md:flex-none min-w-0">
+                                                            <p className="text-[11px] md:text-lg font-bold text-slate-400 mb-1 md:mb-2">數量</p>
+                                                            <input type="number" placeholder="0" className="w-full min-w-0 md:w-24 text-center text-lg md:text-3xl font-black py-1.5 md:py-3 bg-white border-2 md:border-4 border-sky-200 rounded-lg md:rounded-2xl text-sky-900 focus:bg-white shadow-sm" value={stdQtys[p.id]||''} onChange={e=>setStdQtys({...stdQtys, [p.id]: e.target.value})} />
+                                                        </div>
+                                                        <div className="text-right flex-[1.2] md:flex-none md:min-w-[140px] shrink-0">
+                                                            <p className="text-[11px] md:text-sm font-bold text-slate-400 mb-1 md:mb-0 md:hidden">小計</p>
+                                                            <p className={`text-xl md:text-3xl font-black mt-0 md:mt-6 ${sub > 0 ? 'text-sky-700' : 'text-slate-200'}`}>${sub}</p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                {extras.length > 0 && (
+                                                    <div className="w-full mt-4 pt-4 border-t-2 border-slate-200 border-dashed space-y-3">
+                                                        {extras.map((ext, eIdx) => {
+                                                            const extSub = (parseInt(ext.price)||0) * (parseInt(ext.qty)||0);
+                                                            return (
+                                                                <div key={ext.id} className="flex flex-col md:flex-row items-end md:items-center justify-between gap-3 bg-white p-3 rounded-xl border border-slate-200 shadow-sm relative">
                                                                     <div className="flex items-center gap-2 w-full md:w-auto min-w-0">
                                                                         <span className="text-purple-700 font-bold bg-purple-50 px-2 py-1 rounded-md text-[10px] md:text-sm whitespace-nowrap border border-purple-100 shrink-0">項目 #{eIdx+2}</span>
                                                                         <div className="flex-1 flex gap-1 md:gap-2 min-w-0">
-                                                                            <input type="number" placeholder="單價" className="w-full min-w-0 md:w-28 text-center text-base md:text-xl font-black py-1.5 md:py-2 border-2 border-purple-200 bg-purple-50 rounded-lg text-purple-900" value={ext.price} onChange={e=>updateExtra(p.id, ext.id, 'price', e.target.value)} />
+                                                                            <input type="number" placeholder="單價" className="w-full min-w-0 md:w-28 text-center text-base md:text-xl font-black py-1.5 md:py-2 border-2 border-purple-200 bg-purple-50 rounded-lg text-purple-900 focus:bg-white focus:border-purple-400" value={ext.price} onChange={e=>updateExtra(p.id, ext.id, 'price', e.target.value)} />
                                                                             <span className="text-slate-400 self-center font-bold shrink-0">x</span>
-                                                                            <input type="number" placeholder="數量" className="w-full min-w-0 md:w-24 text-center text-base md:text-xl font-black py-1.5 md:py-2 border-2 border-sky-200 bg-sky-50 rounded-lg text-sky-900" value={ext.qty} onChange={e=>updateExtra(p.id, ext.id, 'qty', e.target.value)} />
+                                                                            <input type="number" placeholder="數量" className="w-full min-w-0 md:w-24 text-center text-base md:text-xl font-black py-1.5 md:py-2 border-2 border-sky-200 bg-sky-50 rounded-lg text-sky-900 focus:bg-white focus:border-sky-400" value={ext.qty} onChange={e=>updateExtra(p.id, ext.id, 'qty', e.target.value)} />
                                                                         </div>
                                                                     </div>
                                                                     <div className="flex items-center justify-between w-full md:w-auto gap-4 md:min-w-[140px] md:justify-end shrink-0">
-                                                                        <div className="flex flex-col items-end">
-                                                                            <p className="text-lg md:text-2xl font-black text-slate-600">${(parseInt(ext.price)||0) * (parseInt(ext.qty)||0)}</p>
-                                                                            {/* 顯示該單價的庫存 */}
-                                                                            {ext.price && !isNaN(parseInt(ext.price)) && (
-                                                                                <span className="text-[10px] text-purple-500 font-bold">庫存: {p.extraStocks ? (p.extraStocks[ext.price] || 0) : 0}</span>
-                                                                            )}
-                                                                        </div>
-                                                                        <button onClick={()=>removeExtra(p.id, ext.id)} className="text-rose-400 p-1.5 md:p-2 hover:bg-rose-50 rounded-lg"><Icons.Trash /></button>
+                                                                        <p className="text-lg md:text-2xl font-black text-slate-600">${extSub}</p>
+                                                                        <button onClick={()=>removeExtra(p.id, ext.id)} className="text-rose-400 p-1.5 md:p-2 hover:bg-rose-50 rounded-lg active:bg-rose-100 transition-colors shrink-0"><Icons.Trash /></button>
                                                                     </div>
                                                                 </div>
                                                             )
-<!-- ... existing code ... -->
+                                                        })}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </section>
+
+                            <section className="bg-white p-5 md:p-8 rounded-3xl md:rounded-[2rem] shadow-xl border-2 md:border-4 border-sky-100">
+                                <h2 className="text-2xl md:text-3xl font-black mb-4 md:mb-6 text-sky-800">🔥 期間限定 (自訂)</h2>
+                                <div className="flex flex-wrap md:grid md:grid-cols-12 gap-2 md:gap-4 mb-4 md:mb-6 bg-sky-50 p-4 md:p-6 rounded-2xl md:rounded-3xl border-2 border-sky-200">
+                                    <input type="text" placeholder="品名" className="w-full min-w-0 md:col-span-5 p-3 md:p-4 rounded-xl md:rounded-2xl border-2 md:border-4 border-sky-200 text-lg md:text-2xl font-black text-black" value={newLimited.name} onChange={e=>setNewLimited({...newLimited, name:e.target.value})} />
+                                    <div className="flex w-full gap-2 md:contents min-w-0">
+                                        <input type="number" placeholder="單價" className="flex-1 min-w-0 md:col-span-3 p-3 md:p-4 rounded-xl md:rounded-2xl border-2 md:border-4 border-sky-200 text-lg md:text-2xl font-black text-center text-black" value={newLimited.price} onChange={e=>setNewLimited({...newLimited, price:e.target.value})} />
+                                        <input type="number" placeholder="數量" className="flex-1 min-w-0 md:col-span-2 p-3 md:p-4 rounded-xl md:rounded-2xl border-2 md:border-4 border-sky-200 text-lg md:text-2xl font-black text-center text-black" value={newLimited.qty} onChange={e=>setNewLimited({...newLimited, qty:e.target.value})} />
+                                    </div>
+                                    <button onClick={()=>{
+                                        if(limitedItems.length>=10) return setSysMsg({type: 'warning', title: '超過上限', text: '期間限定項目最多 10 項。'});
+                                        if(!newLimited.name || !newLimited.price || !newLimited.qty) return setSysMsg({type: 'warning', title: '資料不完整', text: '請填寫品名、單價與數量。'});
+                                        setLimitedItems([...limitedItems, {...newLimited, id:Date.now(), price:parseInt(newLimited.price), qty:parseInt(newLimited.qty)}]);
+                                        setNewLimited({name:'', price:'', qty:1});
+                                    }} className="w-full md:col-span-2 bg-gradient-to-b from-sky-500 to-sky-700 text-white p-3 md:p-4 rounded-xl md:rounded-2xl flex items-center justify-center gap-2 font-black text-lg md:text-xl shadow-[0_4px_0_rgb(3,105,161)] active:shadow-[0_0px_0_rgb(3,105,161)] active:translate-y-1 transition-all">
+                                        <Icons.Plus /> <span>新增</span>
+                                    </button>
+                                </div>
+                                <div className="space-y-3 md:space-y-4">
+                                    {limitedItems.map(i => (
+                                        <div key={i.id} className="flex justify-between items-center bg-white p-4 md:p-5 rounded-xl md:rounded-2xl border-2 border-slate-200 shadow-sm md:shadow-md">
+                                            <div className="flex-1">
+                                                <span className="font-medium text-lg md:text-2xl block text-black">{i.name}</span>
+                                                <span className="text-sm md:text-lg text-slate-600 font-bold">${i.price} x {i.qty} = <span className="text-sky-700">${i.price * i.qty}</span></span>
+                                            </div>
+                                            <button onClick={()=>setLimitedItems(limitedItems.filter(x=>x.id!==i.id))} className="text-red-500 p-2 md:p-3 hover:bg-red-50 rounded-lg md:rounded-xl"><Icons.Trash /></button>
+                                        </div>
+                                    ))}
+                                </div>
+                            </section>
+
+                            <section className="bg-white p-5 md:p-8 rounded-3xl md:rounded-[2rem] shadow-xl border-2 md:border-4 border-emerald-100">
+                                <h2 className="text-2xl md:text-3xl font-black mb-4 md:mb-6 text-emerald-800">🧡 友情分享 (自訂)</h2>
+                                <div className="flex flex-wrap md:grid md:grid-cols-12 gap-2 md:gap-4 mb-4 md:mb-6 bg-emerald-50 p-4 md:p-6 rounded-2xl md:rounded-3xl border-2 border-emerald-200">
+                                    <input type="text" placeholder="品名" className="w-full min-w-0 md:col-span-8 p-3 md:p-4 rounded-xl md:rounded-2xl border-2 md:border-4 border-emerald-200 text-lg md:text-2xl font-black text-black" value={newSharing.name} onChange={e=>setNewSharing({...newSharing, name:e.target.value})} />
+                                    <div className="flex w-full gap-2 md:contents min-w-0">
+                                        <input type="number" placeholder="數量" className="flex-1 min-w-0 md:col-span-2 p-3 md:p-4 rounded-xl md:rounded-2xl border-2 md:border-4 border-emerald-200 text-lg md:text-2xl font-black text-center text-black" value={newSharing.qty} onChange={e=>setNewSharing({...newSharing, qty:e.target.value})} />
+                                        <button onClick={()=>{
+                                            if(sharingItems.length>=10) return setSysMsg({type: 'warning', title: '超過上限', text: '友情分享項目最多 10 項。'});
+                                            if(!newSharing.name || !newSharing.qty) return setSysMsg({type: 'warning', title: '資料不完整', text: '請填寫品名與數量。'});
+                                            setSharingItems([...sharingItems, {...newSharing, id:Date.now(), qty:parseInt(newSharing.qty)}]);
+                                            setNewSharing({name:'', qty:1});
+                                        }} className="flex-1 md:col-span-2 bg-gradient-to-b from-emerald-500 to-emerald-700 text-white p-3 md:p-4 rounded-xl md:rounded-2xl flex items-center justify-center gap-2 font-black text-lg md:text-xl shadow-[0_4px_0_rgb(4,120,87)] active:shadow-[0_0px_0_rgb(4,120,87)] active:translate-y-1 transition-all">
+                                            <Icons.Plus /> <span>分享</span>
+                                        </button>
+                                    </div>
+                                </div>
+                                <div className="space-y-3 md:space-y-4">
+                                    {sharingItems.map(i => (
+                                        <div key={i.id} className="flex justify-between items-center bg-white p-4 md:p-5 rounded-xl md:rounded-2xl border-2 border-slate-200 shadow-sm md:shadow-md">
+                                            <div className="flex-1">
+                                                <span className="font-medium text-lg md:text-2xl block text-emerald-800">分享：{i.name}</span>
+                                                <span className="text-sm md:text-lg text-slate-600 font-bold">數量：{i.qty}</span>
+                                            </div>
+                                            <button onClick={()=>setSharingItems(sharingItems.filter(x=>x.id!==i.id))} className="text-red-500 p-2 md:p-3 hover:bg-red-50 rounded-lg md:rounded-xl"><Icons.Trash /></button>
+                                        </div>
+                                    ))}
+                                </div>
+                            </section>
+                        </div>
+                    ) : (
+                        <div className="w-full flex justify-center pb-24 md:pb-20">
+                            <div id="preview-container" className="w-full max-w-3xl bg-white min-h-screen md:min-h-0 md:rounded-[2rem] shadow-2xl overflow-hidden print-container animate-in zoom-in-95 duration-300">
+                                <div id="capture-target" className="bg-white w-full">
+                                    <div className="bg-slate-900 p-6 md:p-10 text-white flex justify-between items-end">
+                                        <div>
+                                            <h2 className="text-3xl md:text-5xl font-black leading-none mb-1 md:mb-2">葳葳海鮮</h2>
+                                            <p className="text-slate-400 font-bold tracking-widest text-[10px] md:text-lg uppercase">Order Confirmation</p>
+                                        </div>
+                                        <div className="text-right text-[10px] md:text-base text-slate-500 font-bold">
+                                            {currentOrderId && !isLocalMode ? '雲端歷史存檔' : new Date().toLocaleString('zh-TW')}
+                                        </div>
+                                    </div>
+
+                                    <div className="p-4 md:p-8 space-y-6 md:space-y-8">
+                                        <div className="flex flex-col items-center justify-center border-b-2 md:border-b-4 border-slate-200 pb-6 md:pb-8 text-center">
+                                            <p className="text-xs md:text-sm font-black text-slate-400 uppercase mb-1 md:mb-2 tracking-widest">客戶資訊</p>
+                                            <div className="flex flex-wrap items-baseline justify-center gap-2 md:gap-4">
+                                                {orderer.isHandwritten ? (
+                                                    <span className="font-black text-black text-3xl md:text-5xl tracking-widest px-6 md:px-8 border-b-2 md:border-b-4 border-black h-[40px] md:h-[60px] inline-block mb-2"></span>
+                                                ) : (
+                                                    <span className="font-black text-black text-3xl md:text-5xl">{orderer.name}</span>
+                                                )}
+                                                {orderer.phone && <span className="font-black text-black text-xl md:text-3xl">{orderer.phone}</span>}
+                                            </div>
+                                            {orderer.address && (
+                                                <div className="mt-2 md:mt-4 font-bold text-slate-700 text-lg md:text-2xl">{orderer.address}</div>
+                                            )}
+                                            {paymentStatus === 'paid' && (
+                                                <span className="mt-3 md:mt-4 bg-emerald-100 text-emerald-800 px-4 md:px-6 py-1.5 md:py-2 rounded-full text-base md:text-xl font-black border-2 border-emerald-200 tracking-tight flex items-center justify-center gap-1.5 md:gap-2 max-w-fit mx-auto">
+                                                    <Icons.CheckCircle /> 已付款
+                                                </span>
+                                            )}
+                                            {paymentStatus === 'credit' && (
+                                                <span className="mt-3 md:mt-4 bg-indigo-100 text-indigo-800 px-4 md:px-6 py-1.5 md:py-2 rounded-full text-base md:text-xl font-black border-2 border-indigo-200 tracking-tight flex items-center justify-center gap-1.5 md:gap-2 max-w-fit mx-auto">
+                                                    <Icons.CreditCard /> 本次剩餘 ${creditAmount}
+                                                </span>
+                                            )}
+                                        </div>
+
+                                        <div className="overflow-x-auto w-full pb-2">
+                                            <table className="w-full text-lg md:text-3xl order-table border-collapse min-w-[320px]">
+                                                <thead>
+                                                    <tr className="border-b-2 md:border-b-4 border-slate-300 text-black font-black uppercase text-sm md:text-2xl">
+                                                        <th className="text-right py-2 md:py-3 w-1/2">品項</th>
+                                                        <th className="text-center w-[15%] whitespace-nowrap">單價</th>
+                                                        <th className="text-center w-[10%] whitespace-nowrap">數量</th>
+                                                        <th className="text-left pl-3 md:pl-6 w-[25%] whitespace-nowrap">小計</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {summary.items.map((i, idx) => {
+                                                        const isSameAsPrev = idx > 0 && i.baseId && summary.items[idx - 1].baseId === i.baseId && (i.type === '一般' || i.type === '另價') && (summary.items[idx - 1].type === '一般' || summary.items[idx - 1].type === '另價');
+                                                        return (
+                                                            <tr key={`bill-${idx}`} className="text-black even-row even:bg-slate-100 border-b border-slate-200">
+                                                                <td className="text-right py-3 md:py-5 pr-2 md:pr-3 leading-tight font-normal">
+                                                                    {!isSameAsPrev && (
+                                                                        <>
+                                                                            {i.name}
+                                                                            {(i.type === '一般' || i.type === '另價') && jinPrices[i.baseId || i.id] !== undefined && <span className="ml-1 md:ml-2 text-[11px] md:text-2xl text-slate-500 font-bold whitespace-nowrap block md:inline">(${jinPrices[i.baseId || i.id]}/斤)</span>}
+                                                                            {i.type === '分享' && <span className="ml-1 md:ml-2 text-[10px] md:text-sm bg-emerald-100 text-emerald-800 px-1 md:px-2 py-0.5 md:py-1 rounded border border-emerald-300 inline-block font-bold relative -top-0.5 md:-top-1">分享</span>}
+                                                                            {i.type === '限定' && <span className="ml-1 md:ml-2 text-[10px] md:text-sm bg-sky-100 text-sky-800 px-1 md:px-2 py-0.5 md:py-1 rounded border border-sky-300 inline-block font-bold relative -top-0.5 md:-top-1">限定</span>}
+                                                                        </>
+                                                                    )}
+                                                                </td>
+                                                                <td className="text-center text-black px-1 md:px-2 font-normal whitespace-nowrap">${i.price}</td>
+                                                                <td className="text-center px-1 md:px-2 font-normal whitespace-nowrap">x{i.qty}</td>
+                                                                <td className="text-left pl-3 md:pl-6 text-black font-normal whitespace-nowrap">${i.total}</td>
+                                                            </tr>
+                                                        );
+                                                    })}
+                                                </tbody>
+                                                <tfoot className="border-t-4 md:border-t-8 border-slate-300 bg-white">
+                                                    <tr className="text-sm md:text-lg font-bold text-slate-500">
+                                                        <td rowSpan={footerRowCount} colSpan="2" className="p-3 md:p-6 align-bottom border-r-2 md:border-r-4 border-slate-100">
+                                                            <div className="text-slate-900 space-y-1 md:space-y-3 text-left">
+                                                                <p className="text-xs md:text-base font-black text-slate-400 tracking-widest border-b border-slate-200 pb-1 mb-1 md:mb-2 inline-block">匯款與聯絡資訊</p>
+                                                                <p className="text-[17px] md:text-3xl font-black leading-tight text-indigo-950">郵局(700) <br/><span className="text-xl md:text-5xl">0191289-0858464</span></p>
+                                                                <p className="text-[17px] md:text-3xl font-black leading-tight mt-1 md:mt-2 text-indigo-950">吳庭葳</p>
+                                                                <p className="text-xl md:text-4xl font-black leading-tight text-indigo-950">0910-745-919</p>
+                                                            </div>
+                                                        </td>
+                                                        <td className="pt-4 md:pt-8 text-center whitespace-nowrap text-sm md:text-xl font-bold">商品總計</td>
+                                                        <td className="pt-4 md:pt-8 text-left pl-3 md:pl-6 text-black font-black whitespace-nowrap text-lg md:text-3xl">${summary.subtotal}</td>
+                                                    </tr>
+                                                    <tr className="text-sm md:text-lg font-bold text-slate-500">
+                                                        <td className="text-center whitespace-nowrap pt-1 md:pt-2">運費金額</td>
+                                                        <td className="text-left pl-3 md:pl-6 text-black font-black whitespace-nowrap text-lg md:text-3xl pt-1 md:pt-2">+{summary.actualShip}</td>
+                                                    </tr>
+                                                    {summary.actualDisc > 0 && (
+                                                        <tr className="text-sm md:text-lg font-bold text-amber-500">
+                                                            <td className="text-center whitespace-nowrap pt-1 md:pt-2">折讓優惠</td>
+                                                            <td className="text-left pl-3 md:pl-6 font-black whitespace-nowrap text-lg md:text-3xl pt-1 md:pt-2">-{summary.actualDisc}</td>
+                                                        </tr>
+                                                    )}
+                                                    <tr>
+                                                        <td className="pt-2 md:pt-4 text-center text-sm md:text-2xl font-black text-slate-500 uppercase tracking-widest whitespace-nowrap">總金額</td>
+                                                        <td className="pt-2 md:pt-4 text-left pl-3 md:pl-6 text-3xl md:text-6xl font-black text-red-600 tracking-tighter leading-none whitespace-nowrap">
+                                                            ${summary.grandTotal}
+                                                        </td>
+                                                    </tr>
+                                                </tfoot>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="p-4 md:p-6 bg-slate-100 flex flex-col md:flex-row gap-3 md:gap-6 no-print">
+                                    <button id="btn-screenshot" onClick={handleScreenshot} className="flex-1 bg-emerald-600 text-white py-4 md:py-6 rounded-2xl md:rounded-3xl font-black text-lg md:text-2xl shadow-lg hover:bg-emerald-500 transition-all flex items-center justify-center gap-2 md:gap-3 active:scale-95">
+                                        <Icons.Camera /> 彩色圖檔 (傳LINE用)
+                                    </button>
+                                    <button id="btn-thermal" onClick={handleThermalPrint} className="flex-1 bg-slate-800 text-white py-4 md:py-6 rounded-2xl md:rounded-3xl font-black text-lg md:text-2xl shadow-lg hover:bg-black transition-all flex items-center justify-center gap-2 md:gap-3 active:scale-95">
+                                        <Icons.Receipt /> 貼紙圖檔 (精臣用)
+                                    </button>
+                                    <button onClick={()=>setConfirmAction({type: 'next'})} className="flex-1 bg-sky-700 text-white py-4 md:py-6 rounded-2xl md:rounded-3xl font-black text-lg md:text-2xl shadow-lg hover:bg-sky-600 transition-all flex items-center justify-center gap-2 md:gap-3 active:scale-95">
+                                        <Icons.Plus /> 開下一張單
+                                    </button>
+                                    <button onClick={()=>setShowBill(false)} className="flex-1 bg-slate-300 text-slate-700 py-4 md:py-6 rounded-2xl md:rounded-3xl font-black text-lg md:text-2xl shadow-xl active:bg-slate-400 transition-all flex items-center justify-center gap-2 md:gap-3">
+                                        <Icons.ChevronLeft /> 返回修改
+                                    </button>
+                                </div>
+
+                            </div>
+                        </div>
+                    )}
+
+                    {/* 底部導覽列 */}
+                    {!showBill && (
+                        <>
+                            <div className="fixed bottom-0 left-0 right-0 bg-slate-900 text-white shadow-[0_-10px_40px_rgba(0,0,0,0.3)] z-40 border-t-4 md:border-t-8 border-sky-600 no-print flex flex-col">
+                                <div className="flex border-b border-slate-700 text-xs md:text-base">
+                                    <div className="flex-1 flex items-center border-r border-slate-700 p-2 md:p-3">
+                                        <span className="font-bold text-slate-400 mr-1 md:mr-2 whitespace-nowrap">🚚 運費</span>
+                                        <div className="flex gap-1 md:gap-2 w-full max-w-[120px] md:max-w-[200px]">
+                                            <button onClick={()=>setShip({type:'free', fee:''})} className={`flex-1 py-1.5 md:py-2 rounded font-bold ${ship.type==='free'?'bg-sky-600 text-white':'bg-slate-800 text-slate-400'}`}>免運</button>
+                                            <button onClick={()=>setShip({type:'paid', fee:ship.fee})} className={`flex-1 py-1.5 md:py-2 rounded font-bold ${ship.type==='paid'?'bg-sky-600 text-white':'bg-slate-800 text-slate-400'}`}>自訂</button>
+                                        </div>
+                                        {ship.type==='paid' && <input type="number" placeholder="$" className="w-12 md:w-16 ml-1 md:ml-2 p-1 md:p-2 rounded bg-slate-800 text-white text-center font-bold outline-none border border-slate-600 footer-input min-w-0" value={ship.fee} onChange={e=>setShip({...ship, fee:e.target.value})} />}
+                                    </div>
+                                    <div className="flex-1 flex items-center p-2 md:p-3">
+                                        <span className="font-bold text-slate-400 mr-1 md:mr-2 whitespace-nowrap">🏷️ 折讓</span>
+                                        <input type="number" placeholder="輸入金額" className="w-full min-w-[60px] p-1.5 md:p-2 rounded bg-slate-800 text-amber-400 font-bold outline-none border border-slate-600 footer-input min-w-0" value={discount} onChange={e=>setDiscount(e.target.value)} />
+                                    </div>
+                                </div>
+
+                                <div className="flex items-center p-2 md:p-4 gap-2 md:gap-4">
+                                    <button onClick={() => setShowDetailDrawer(!showDetailDrawer)} className="flex items-center justify-center gap-1 md:gap-2 bg-slate-700 hover:bg-slate-600 px-3 md:px-6 py-2 md:py-4 rounded-xl md:rounded-2xl transition-all shadow-lg active:scale-95">
+                                        {showDetailDrawer ? <Icons.ChevronLeft /> : <Icons.List />}
+                                        <span className="font-bold text-sm md:text-lg hidden xs:inline">明細</span>
+                                    </button>
+                                    
+                                    <button onClick={submitOrder} className="flex-1 flex items-center justify-center gap-1 md:gap-2 bg-emerald-500 hover:bg-emerald-400 text-white px-3 md:px-6 py-3 md:py-4 rounded-xl md:rounded-2xl shadow-lg transition-all active:scale-95">
+                                        <Icons.Check />
+                                        <span className="font-black text-lg md:text-2xl tracking-widest whitespace-nowrap">產出訂單</span>
+                                    </button>
+
+                                    <div className="flex flex-col items-end min-w-[80px] md:min-w-[120px]">
+                                        <span className="text-[10px] md:text-xs font-bold text-slate-400 uppercase tracking-widest">Total</span>
+                                        <span className="text-2xl md:text-5xl font-black text-white tracking-tighter leading-none">${summary.grandTotal}</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* 側邊明細抽屜 */}
+                            <div className={`fixed top-0 left-0 h-full w-72 md:w-80 max-w-[85%] bg-white shadow-2xl z-50 drawer-transition ${showDetailDrawer ? 'translate-x-0' : '-translate-x-full'}`}>
+                                <div className="p-3 md:p-4 bg-slate-800 text-white font-black text-lg md:text-xl flex justify-between items-center">
+                                    <span>📝 已選明細</span>
+                                    <button onClick={()=>setShowDetailDrawer(false)}><Icons.ChevronLeft /></button>
+                                </div>
+                                <div className="overflow-y-auto p-3 md:p-4 space-y-2 md:space-y-3 h-[calc(100%-60px)]">
+                                    {summary.items.length === 0 ? (
+                                        <p className="text-center text-slate-400 py-8 text-sm">尚未選擇任何商品</p>
+                                    ) : (
+                                        summary.items.map((item, idx) => {
+                                            const isSameAsPrev = idx > 0 && item.baseId && summary.items[idx - 1].baseId === item.baseId && (item.type === '一般' || item.type === '另價') && (summary.items[idx - 1].type === '一般' || summary.items[idx - 1].type === '另價');
+                                            return (
+                                                <div key={`drawer-${idx}`} className="flex justify-between items-center py-2 md:py-3 border-b border-slate-100 last:border-0">
+                                                    <div className="flex-1 pr-2 overflow-hidden">
+                                                        <div className={`font-medium text-slate-800 text-base md:text-xl truncate ${isSameAsPrev ? 'opacity-0' : ''}`}>
+                                                            {item.name} 
+                                                            {item.type === '分享' && <span className="ml-1 md:ml-2 text-[10px] md:text-xs bg-emerald-100 text-emerald-700 px-1 md:px-2 py-0.5 rounded font-bold">分享</span>}
+                                                        </div>
+                                                        <div className="text-xs md:text-sm text-slate-400 mt-0.5 md:mt-1">
+                                                            ${item.price} x {item.qty}
+                                                        </div>
+                                                    </div>
+                                                    <div className="font-black text-lg md:text-2xl text-slate-800">
+                                                        ${item.total}
+                                                    </div>
+                                                </div>
+                                            )
+                                        })
+                                    )}
+                                    <div className="pt-3 md:pt-4 mt-3 md:mt-4 border-t-2 border-slate-100 space-y-1 md:space-y-2 text-sm md:text-base">
+                                        <div className="flex justify-between items-center">
+                                            <span className="font-bold text-slate-500">小計</span>
+                                            <span className="font-black text-lg md:text-xl text-slate-800">${summary.subtotal}</span>
+                                        </div>
+                                        <div className="flex justify-between items-center">
+                                            <span className="font-bold text-slate-500">運費</span>
+                                            <span className="font-black text-lg md:text-xl text-slate-800">+${summary.actualShip}</span>
+                                        </div>
+                                        {summary.actualDisc > 0 && (
+                                            <div className="flex justify-between items-center text-amber-600">
+                                                <span className="font-bold">折讓</span>
+                                                <span className="font-black text-lg md:text-xl">-${summary.actualDisc}</span>
+                                            </div>
+                                        )}
+                                        <div className="flex justify-between items-center pt-2 border-t border-slate-200">
+                                            <span className="font-black text-base md:text-lg text-slate-800">應付總額</span>
+                                            <span className="font-black text-2xl md:text-3xl text-red-600">${summary.grandTotal}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            {showDetailDrawer && (
+                                <div className="fixed inset-0 bg-black/50 z-40" onClick={()=>setShowDetailDrawer(false)}></div>
+                            )}
+                        </>
+                    )}
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
