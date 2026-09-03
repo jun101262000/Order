@@ -85,15 +85,18 @@
 </head>
 <body class="bg-slate-100">
     <div id="root">
+        <!-- 如果 React 沒載入，會顯示這個 -->
         <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; color: #475569; background-color: #f8fafc;">
             <svg style="animation: spin 1s linear infinite; width: 50px; height: 50px; margin-bottom: 20px;" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                 <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" stroke-opacity="0.25"></circle>
                 <path fill="#0284c7" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
             </svg>
             <h2 style="font-size: 20px; font-weight: bold; margin-bottom: 10px;">系統初始化中...</h2>
+            <p>如果此畫面停留超過 5 秒，請重新整理網頁</p>
         </div>
     </div>
 
+    <!-- 確保 babel 在本地環境中編譯 JSX -->
     <script type="text/babel">
         const { useState, useMemo, useEffect } = React;
 
@@ -101,7 +104,6 @@
         // 您的專屬 Google Apps Script 網址
         // ==========================================
         const GAS_URL = "https://script.google.com/macros/s/AKfycbwe4dEAFMD-3lkgQUl3PXfu_sJb419LqS04bJnz5CRB_fa-QRQU6eyrJmIjf4d7nuYa/exec";
-        
         // ==========================================
 
         const Icons = {
@@ -121,8 +123,7 @@
             CreditCard: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5 md:w-6 md:h-6"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/><line x1="10" x2="10" y1="15" y2="15"/></svg>,
             Package: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5 md:w-6 md:h-6"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>,
             FileText: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5 md:w-6 md:h-6"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>,
-            CloudOff: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m2 2 20 20"/><path d="M5.78 5.78a7 7 0 0 0 9.24 9.24"/><path d="M8.2 8.2c-.32.06-.65.1-.98.15-2.77.45-4.8 2.8-4.8 5.65 0 3.1 2.5 5.6 5.6 5.6h10.4"/><path d="M17.4 17.4A7 7 0 0 0 22 11.5c0-3.6-2.9-6.5-6.5-6.5a6.5 6.5 0 0 0-4.6 1.8"/></svg>,
-            RefreshCw: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+            CloudOff: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m2 2 20 20"/><path d="M5.78 5.78a7 7 0 0 0 9.24 9.24"/><path d="M8.2 8.2c-.32.06-.65.1-.98.15-2.77.45-4.8 2.8-4.8 5.65 0 3.1 2.5 5.6 5.6 5.6h10.4"/><path d="M17.4 17.4A7 7 0 0 0 22 11.5c0-3.6-2.9-6.5-6.5-6.5a6.5 6.5 0 0 0-4.6 1.8"/></svg>
         };
 
         const DEFAULT_PRODUCTS = [
@@ -151,23 +152,47 @@
             }
             if (action === 'init') {
                 const res = await fetch(GAS_URL);
+                if (!res.ok) throw new Error("網路連線異常");
                 return await res.json();
             } else {
                 const res = await fetch(GAS_URL, {
                     method: 'POST',
-                    // 使用 text/plain 避免 CORS Preflight 錯誤
                     headers: { "Content-Type": "text/plain;charset=utf-8" },
                     body: JSON.stringify({ action, payload })
                 });
+                if (!res.ok) throw new Error("網路連線異常");
                 return await res.json();
             }
         }
 
-        function App() {
+        // 用一個包裝器來攔截未處理的錯誤，防止畫面變白
+        class ErrorBoundary extends React.Component {
+            constructor(props) {
+                super(props);
+                this.state = { hasError: false, errorInfo: null };
+            }
+            static getDerivedStateFromError(error) {
+                return { hasError: true, errorInfo: error };
+            }
+            render() {
+                if (this.state.hasError) {
+                    return (
+                        <div style={{ padding: '20px', textAlign: 'center', fontFamily: 'sans-serif' }}>
+                            <h2 style={{ color: 'red' }}>糟糕，發生了一些錯誤</h2>
+                            <p>{this.state.errorInfo?.toString()}</p>
+                            <button onClick={() => window.location.reload()} style={{ padding: '10px 20px', marginTop: '20px' }}>重新整理</button>
+                        </div>
+                    );
+                }
+                return this.props.children;
+            }
+        }
+
+        function MainApp() {
             const [dbReady, setDbReady] = useState(false);
             const [isLocalMode, setIsLocalMode] = useState(false);
             const [initError, setInitError] = useState(null);
-            const [isSyncing, setIsSyncing] = useState(false); // 避免重複連線的狀態
+            const [isSyncing, setIsSyncing] = useState(false); 
 
             const [showPriceModal, setShowPriceModal] = useState(false);
             const [showChangelog, setShowChangelog] = useState(false);
@@ -205,6 +230,10 @@
                     setInitError(null);
                     const res = await fetchGas('init');
                     
+                    if(res && res.error) {
+                        throw new Error(res.error);
+                    }
+
                     // 處理庫存與報價
                     let items = res.inventory || [];
                     if (items.length === 0) {
@@ -217,8 +246,8 @@
                     
                     const newStd = {}; const newJin = {};
                     items.forEach(item => {
-                        newStd[item.id] = item.defPrice;
-                        if(item.defJinPrice) newJin[item.id] = item.defJinPrice;
+                        newStd[item.id] = item.defPrice !== undefined ? item.defPrice : 0;
+                        if(item.defJinPrice !== undefined) newJin[item.id] = item.defJinPrice;
                     });
                     setStdPrices(newStd);
                     setJinPrices(newJin);
@@ -244,7 +273,7 @@
                 if (!dbReady && !isLocalMode) {
                     loadDataFromGAS();
                 }
-            }, []);
+            }, [dbReady, isLocalMode]);
 
             const startLocalMode = () => {
                 setIsLocalMode(true);
@@ -287,9 +316,9 @@
                                     <Icons.CloudOff />
                                 </div>
                                 <h2 className="text-2xl font-black text-slate-800 mb-3">無法連線至雲端</h2>
-                                <p className="text-slate-600 font-bold mb-6 text-sm whitespace-pre-line">
+                                <p className="text-slate-600 font-bold mb-6 text-sm whitespace-pre-line break-words">
                                     {initError}
-                                    {"\n\n請確認您是否已經將 GAS_URL 替換成您的專屬網址。"}
+                                    {"\n\n如果錯誤持續發生，請確認您的 GAS_URL 是否正確，或暫時切換到單機模式。"}
                                 </p>
                                 <button onClick={startLocalMode} className="w-full py-3 md:py-4 rounded-xl font-black text-lg md:text-xl bg-slate-800 text-white shadow-lg active:scale-95 transition-transform flex items-center justify-center gap-2 mb-3">
                                     強制進入單機測試模式
@@ -359,7 +388,7 @@
                         defJinPrice: jinPrices[p.id] !== undefined ? jinPrices[p.id] : p.defJinPrice
                     }));
                     await fetchGas("saveInventory", newInventory);
-                    setInventory(newInventory); // Update local state
+                    setInventory(newInventory); 
                     setShowPriceModal(false);
                 } catch(e) {
                     setSysMsg({ type: 'error', title: '儲存失敗', text: '無法儲存報價至雲端，請檢查網路連線。' });
@@ -1315,7 +1344,12 @@
         }
 
         const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<App />);
+        // 加入 Error Boundary 保護整個應用程式
+        root.render(
+            <ErrorBoundary>
+                <App />
+            </ErrorBoundary>
+        );
     </script>
 </body>
 </html>
