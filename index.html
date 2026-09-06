@@ -874,7 +874,7 @@
                             <div className="flex justify-between items-center no-print sticky top-2 z-20">
                                 <div className="flex gap-1.5 md:gap-2">
                                     <button onClick={()=>setShowPriceModal(true)} className="flex items-center gap-1 bg-white/90 backdrop-blur text-sky-800 px-3 py-2 md:px-4 md:py-3 rounded-full shadow-lg font-bold border border-sky-100 text-[13px] md:text-lg">
-                                        <Icons.Dollar /> <span className="hidden md:inline">報價</span>
+                                        <Icons.CreditCard /> <span className="hidden md:inline">報價</span>
                                     </button>
                                     <button onClick={()=>setShowInventoryPanel(true)} className="flex items-center gap-1 bg-white/90 backdrop-blur text-amber-700 px-3 py-2 md:px-4 md:py-3 rounded-full shadow-lg font-bold border border-amber-200 text-[13px] md:text-lg">
                                         <Icons.Package /> <span className="hidden md:inline">庫存</span>
@@ -1204,7 +1204,7 @@
                                         <Icons.Camera /> 彩色圖檔 (傳LINE用)
                                     </button>
                                     <button id="btn-thermal" onClick={handleThermalPrint} className="flex-1 bg-slate-800 text-white py-4 md:py-6 rounded-2xl md:rounded-3xl font-black text-lg md:text-2xl shadow-lg hover:bg-black transition-all flex items-center justify-center gap-2 md:gap-3 active:scale-95">
-                                        <Icons.Receipt /> 貼紙圖檔 (精臣用)
+                                       <Icons.Printer /> 貼紙圖檔 (精臣用)
                                     </button>
                                     <button onClick={()=>setConfirmAction({type: 'next'})} className="flex-1 bg-sky-700 text-white py-4 md:py-6 rounded-2xl md:rounded-3xl font-black text-lg md:text-2xl shadow-lg hover:bg-sky-600 transition-all flex items-center justify-center gap-2 md:gap-3 active:scale-95">
                                         <Icons.Plus /> 開下一張單
