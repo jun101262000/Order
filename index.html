@@ -94,6 +94,7 @@
         </div>
     </div>
 
+    <script src="order-tools.js"></script>
     <script type="text/babel">
         const { useState, useMemo, useEffect } = React;
 
@@ -159,7 +160,7 @@
                     return {
                         ...defP,
                         stock: found.s || 0,
-                        defPrice: found.dp || defP.defPrice,
+                        defPrice: found.dp ?? defP.defPrice,
                         defJinPrice: found.djp || defP.defJinPrice,
                         extraStocks: found.es || {}
                     };
@@ -168,19 +169,27 @@
             });
         };
 
+        let sessionToken = '';
         const fetchGas = async (action, payload = null) => {
-            if (!GAS_URL || GAS_URL.includes("您的_GAS_網址")) throw new Error("尚未設定 Google Apps Script 網址。");
-            if (action === 'init') {
-                const res = await fetch(GAS_URL);
-                return await res.json();
-            } else {
-                const res = await fetch(GAS_URL, {
-                    method: 'POST',
-                    headers: { "Content-Type": "text/plain;charset=utf-8" },
-                    body: JSON.stringify({ action, payload })
-                });
-                return await res.json();
+            const mutation = ['saveInventory','saveOrder','deleteOrder'].includes(action);
+            const stablePayload=payload && {...payload};
+            if(action==='saveOrder') {delete stablePayload.timestampMs;delete stablePayload.timestampStr;}
+            const fingerprint = JSON.stringify({action,payload:stablePayload});
+            if (mutation && fetchGas.pending?.fingerprint !== fingerprint) fetchGas.pending = {fingerprint,id:crypto.randomUUID()};
+            const response = action === 'init' && !sessionToken ? await fetch(GAS_URL) : await fetch(GAS_URL, {
+                method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
+                body:JSON.stringify({action,payload,token:sessionToken,requestId:mutation?fetchGas.pending.id:undefined})
+            });
+            if(!response.ok) throw new Error('連線失敗，請稍後重試');
+            const result = await response.json();
+            if(result.success === false) {
+                if(mutation && result.code !== 'SERVER' && result.code !== 'BUSY') fetchGas.pending=null;
+                if(result.code === 'AUTH') window.dispatchEvent(new Event('order-auth-required'));
+                throw new Error(result.error || result.message || '儲存失敗');
             }
+            if(action==='init' && result.apiVersion!==2) throw new Error('請先部署新版後端，再使用此版本網站');
+            if(mutation) fetchGas.pending=null;
+            return result;
         };
 
         function App() {
@@ -196,6 +205,47 @@
             const [sysMsg, setSysMsg] = useState(null);
 
             const [inventory, setInventory] = useState([]);
+            const [inventoryDraft, setInventoryDraft] = useState([]);
+            const [revision, setRevision] = useState(0);
+            const [draftRevision, setDraftRevision] = useState(0);
+            const [admin, setAdmin] = useState(null);
+            const [showLogin, setShowLogin] = useState(false);
+            const [loginId, setLoginId] = useState('admin1');
+            const [loginPin, setLoginPin] = useState('');
+            const [loginError, setLoginError] = useState('');
+            const [auditRows, setAuditRows] = useState(null);
+            const pendingOrderId = React.useRef(null);
+            const applyServer = data => {
+                setInventory(restoreInventory(data.inventory)); setRevision(data.revision);
+                setInventoryUpdatedAt(data.inventoryUpdatedAt || null);
+                setHistory((data.orders || []).sort((a,b)=>b.timestampMs-a.timestampMs));
+            };
+            useEffect(()=>{
+                const expired=()=>{sessionToken='';setAdmin(null);setShowLogin(true);};
+                window.addEventListener('order-auth-required',expired);
+                return ()=>window.removeEventListener('order-auth-required',expired);
+            },[]);
+            const loginAdmin = async () => {
+                setIsSyncing(true); setLoginError('');
+                try { const result=await fetchGas('login',{id:loginId,pin:loginPin});
+                    sessionToken=result.token; setAdmin(result.user);setLoginPin('');
+                    applyServer(await fetchGas('init'));setShowLogin(false);
+                } catch(e) {setLoginError(e.message);setLoginPin('');} finally {setIsSyncing(false);}
+            };
+            const openInventory = async () => {
+                if(!isLocalMode && !admin) {setShowLogin(true);return;}
+                setIsSyncing(true);
+                try { let items=inventory, rev=revision;
+                    if(!isLocalMode){const data=await fetchGas('init');applyServer(data);items=restoreInventory(data.inventory);rev=data.revision;}
+                    setInventoryDraft(JSON.parse(JSON.stringify(items)));setDraftRevision(rev);setShowInventoryPanel(true);
+                } catch(e){setSysMsg({type:'error',title:'讀取失敗',text:e.message});} finally{setIsSyncing(false);}
+            };
+            const showAudit = async () => {
+                setIsSyncing(true);try{setAuditRows((await fetchGas('audit')).rows);}catch(e){setSysMsg({type:'error',title:'讀取失敗',text:e.message});}finally{setIsSyncing(false);}
+            };
+            const [showInventoryList, setShowInventoryList] = useState(false);
+            const [inventoryUpdatedAt, setInventoryUpdatedAt] = useState(null);
+            const [exportBusy, setExportBusy] = useState(false);
             const [history, setHistory] = useState([]);
             const [showHistory, setShowHistory] = useState(false);
             const [orderer, setOrderer] = useState({ name: '', phone: '', address: '', isHandwritten: false });
@@ -226,7 +276,7 @@
                 const items = [];
                 inventory.forEach(p => {
                     const q = parseInt(stdQtys[p.id]) || 0;
-                    if (q > 0) items.push({ id: p.id, name: p.name, price: stdPrices[p.id] || p.defPrice, qty: q, total: (stdPrices[p.id] || p.defPrice) * q, type: '一般', baseId: p.id });
+                    if (q > 0) items.push({ id: p.id, name: p.name, price: stdPrices[p.id] ?? p.defPrice, qty: q, total: (stdPrices[p.id] ?? p.defPrice) * q, type: '一般', baseId: p.id });
                     
                     const extras = extraStdItems[p.id] || [];
                     extras.forEach(ext => {
@@ -257,12 +307,14 @@
                     let items = res.inventory || [];
                     if (items.length === 0) {
                         items = DEFAULT_PRODUCTS.map(p => ({...p, stock: 0, extraStocks: {}}));
-                        await fetchGas('saveInventory', minifyInventory(items));
+                        // Initial inventory is written only by an authenticated administrator.
                     } else {
                         items = restoreInventory(items);
                     }
                     items.sort((a,b) => a.id - b.id);
                     setInventory(items);
+                    setRevision(res.revision);
+                    setInventoryUpdatedAt(res.inventoryUpdatedAt || null);
                     
                     const newStd = {}; const newJin = {};
                     items.forEach(item => {
@@ -278,7 +330,7 @@
 
                     setDbReady(true);
                     if(!window.hasShownPriceModal) {
-                        setShowPriceModal(true);
+                        setShowLogin(true);
                         window.hasShownPriceModal = true;
                     }
                 } catch (error) {
@@ -320,6 +372,7 @@
                 setLimitedItems([]); setSharingItems([]);
                 setShip({ type: 'free', fee: '' }); setDiscount('');
                 setNewLimited({ name: '', price: '', qty: '' }); setNewSharing({ name: '', qty: '' });
+                pendingOrderId.current=null;
                 setCurrentOrderId(null); setShowBill(false); setScreenshotUrl(null);
                 window.scrollTo(0, 0); setConfirmAction(null);
             };
@@ -327,6 +380,8 @@
             const loadFromHistory = (record) => {
                 const d = record;
                 setOrderer(d.orderer || { name: '', phone: '', address: '', isHandwritten: false });
+                setStdPrices(d.stdPrices || Object.fromEntries(inventory.map(p => [p.id, p.defPrice])));
+                setJinPrices(d.jinPrices || Object.fromEntries(inventory.filter(p => p.defJinPrice != null).map(p => [p.id, p.defJinPrice])));
                 setPaymentStatus(d.paymentStatus || 'pending'); setCreditAmount(d.creditAmount || '');
                 setStdQtys(d.stdQtys || {}); 
                 setExtraStdItems(d.extraStdItems || {});
@@ -358,35 +413,39 @@
             };
 
             const savePricesToDb = async () => {
+                if(!isLocalMode && !admin) {setShowLogin(true);return;}
                 if (isLocalMode) { setShowPriceModal(false); return; }
                 setIsSyncing(true);
                 try {
                     const newInventory = inventory.map(p => ({
-                        ...p,
-                        defPrice: stdPrices[p.id] !== undefined ? stdPrices[p.id] : p.defPrice,
+                        ...OrderTools.reprice(p, stdPrices[p.id] !== undefined ? stdPrices[p.id] : p.defPrice),
                         defJinPrice: jinPrices[p.id] !== undefined ? jinPrices[p.id] : p.defJinPrice
                     }));
-                    await fetchGas("saveInventory", minifyInventory(newInventory));
+                    const saved = await fetchGas("saveInventory", {items:minifyInventory(newInventory),revision});
+                    applyServer(saved);
+                    setInventoryUpdatedAt(saved.inventoryUpdatedAt || null);
                     setInventory(newInventory); 
                     setShowPriceModal(false);
                 } catch(e) {
-                    setSysMsg({ type: 'error', title: '儲存失敗', text: '無法儲存報價至雲端，請檢查網路連線。' });
+                    setSysMsg({ type: 'error', title: '儲存失敗', text: e.message });
                 } finally { setIsSyncing(false); }
             };
 
             const handleFinishInventory = async () => {
-                if (isLocalMode) { setShowInventoryPanel(false); return; }
+                if (isLocalMode) { setInventory(inventoryDraft);setShowInventoryPanel(false); return; }
                 setIsSyncing(true);
                 try {
-                    await fetchGas("saveInventory", minifyInventory(inventory));
+                    const saved = await fetchGas("saveInventory", {items:minifyInventory(inventoryDraft),revision:draftRevision});
+                    applyServer(saved);
+                    setInventoryUpdatedAt(saved.inventoryUpdatedAt || null);
                     setShowInventoryPanel(false);
                 } catch(e) {
-                    setSysMsg({ type: 'error', title: '儲存失敗', text: '無法更新庫存至雲端，請檢查網路連線。' });
+                    setSysMsg({ type: 'error', title: '儲存失敗', text: e.message });
                 } finally { setIsSyncing(false); }
             };
 
             const updateStockLocal = (pid, priceKey, newValue) => {
-                setInventory(prev => prev.map(p => {
+                setInventoryDraft(prev => prev.map(p => {
                     if (p.id !== pid) return p;
                     const val = parseInt(newValue) || 0;
                     
@@ -394,17 +453,15 @@
                         return { ...p, stock: val };
                     } else {
                         const newExtraStocks = { ...p.extraStocks };
-                        if (val === 0 && !newExtraStocks[priceKey]) {
-                            // ignore
-                        } else {
-                            newExtraStocks[priceKey] = val;
-                        }
+                        newExtraStocks[priceKey] = val;
                         return { ...p, extraStocks: newExtraStocks };
                     }
                 }));
             };
 
             const submitOrder = async () => {
+                if(isSyncing) return;
+                if(!isLocalMode && !admin) {setShowLogin(true);return;}
                 if (!orderer.isHandwritten && !orderer.name) return setSysMsg({ type: 'warning', title: '缺少資料', text: '請填寫姓名，或勾選「留白手寫」' });
                 if (summary.items.length === 0) return setSysMsg({ type: 'warning', title: '缺少商品', text: '請至少選擇一項產品' });
                 if (newLimited.name || newLimited.price || newLimited.qty) return setSysMsg({ type: 'warning', title: '有未加入的項目', text: '您在「期間限定」輸入了資料但尚未點擊【新增】。' });
@@ -417,27 +474,13 @@
                 setIsSyncing(true);
 
                 try {
-                    const newDbId = currentOrderId || Date.now().toString();
+                    const newDbId = currentOrderId || pendingOrderId.current || (pendingOrderId.current=crypto.randomUUID());
                     const orderData = { 
-                        dbId: newDbId, orderer, paymentStatus, creditAmount, stdQtys, stdPrices, jinPrices, extraStdItems, limitedItems, sharingItems, ship, discount, grandTotal: summary.grandTotal,
+                        dbId: newDbId, orderVersion:history.find(h=>h.dbId===newDbId)?.orderVersion || 0, orderer, paymentStatus, creditAmount, stdQtys, stdPrices, jinPrices, extraStdItems, limitedItems, sharingItems, ship, discount, grandTotal: summary.grandTotal,
                         timestampMs: Date.now(), timestampStr: new Date().toLocaleString('zh-TW')
                     };
 
-                    let updatedInventory = [...inventory];
-                    for (const item of summary.items) {
-                        if (item.type === '一般' || item.type === '另價') {
-                            const pIdx = updatedInventory.findIndex(x => x.id === item.baseId);
-                            if (pIdx > -1 && !currentOrderId) {
-                                if (item.type === '一般') {
-                                    updatedInventory[pIdx].stock -= item.qty;
-                                } else if (item.type === '另價') {
-                                    const pKey = item.price.toString();
-                                    if(!updatedInventory[pIdx].extraStocks) updatedInventory[pIdx].extraStocks = {};
-                                    updatedInventory[pIdx].extraStocks[pKey] = (updatedInventory[pIdx].extraStocks[pKey] || 0) - item.qty;
-                                }
-                            }
-                        }
-                    }
+                    const updatedInventory = currentOrderId ? inventory : OrderTools.deduct(inventory, summary.items);
 
                     if (isLocalMode) {
                         let newHistory = [...history];
@@ -447,17 +490,8 @@
                         localStorage.setItem('weiwei_history_v2', JSON.stringify(newHistory));
                         if(!currentOrderId) setInventory(updatedInventory);
                     } else {
-                        await fetchGas("saveOrder", orderData);
-                        if (!currentOrderId) {
-                            await fetchGas("saveInventory", minifyInventory(updatedInventory));
-                            setInventory(updatedInventory);
-                        }
-
-                        let newHistory = [...history];
-                        const idx = newHistory.findIndex(h => h.dbId === newDbId);
-                        if (idx >= 0) newHistory[idx] = orderData; else newHistory.unshift(orderData);
-                        newHistory.sort((a,b) => b.timestampMs - a.timestampMs); 
-                        setHistory(newHistory);
+                        const saved = await fetchGas('saveOrder',orderData);
+                        applyServer(saved);
                     }
 
                     setCurrentOrderId(newDbId);
@@ -465,7 +499,7 @@
                     window.scrollTo(0,0);
                 } catch (e) {
                     console.error(e);
-                    setSysMsg({ type: 'error', title: '產出失敗', text: '無法將訂單存入 Google 表單，請檢查連線。' });
+                    setSysMsg({ type: 'error', title: '產出失敗', text: e.message });
                 } finally { setIsSyncing(false); }
             };
 
@@ -482,17 +516,35 @@
                         if(currentOrderId === confirmAction.id) setCurrentOrderId(null);
                     } else {
                         try {
-                            await fetchGas("deleteOrder", { dbId: confirmAction.id });
+                            const saved=await fetchGas('deleteOrder',{dbId:confirmAction.id,orderVersion:history.find(h=>h.dbId===confirmAction.id)?.orderVersion || 0});
+                            applyServer(saved);
                             const newHistory = history.filter(h => h.dbId !== confirmAction.id);
                             setHistory(newHistory);
                             if(currentOrderId === confirmAction.id) setCurrentOrderId(null);
                         } catch(e) {
-                            setSysMsg({ type: 'error', title: '刪除失敗', text: '無法從雲端刪除訂單。' });
+                            setSysMsg({ type: 'error', title: '刪除失敗', text: e.message });
                         }
                     }
                     setIsSyncing(false);
                     setConfirmAction(null);
                 }
+            };
+
+            const exportImage = async (kind) => {
+                if (exportBusy) return;
+                setExportBusy(true);
+                try {
+                    await document.fonts.ready;
+                    const canvas = kind === 'label'
+                        ? OrderTools.labelCanvas({id:currentOrderId, orderer, paymentStatus, creditAmount, summary})
+                        : OrderTools.inventoryCanvas(OrderTools.inventoryRows(inventory), inventoryUpdatedAt, isLocalMode);
+                    const blob = await OrderTools.download(canvas, kind === 'label' ? '出貨單_100x150mm.png' : '完整庫存表.png', kind === 'label');
+                    const reader = new FileReader();
+                    reader.onload = () => setScreenshotUrl(reader.result);
+                    reader.readAsDataURL(blob);
+                } catch (error) {
+                    setSysMsg({type:'error',title:'圖檔輸出失敗',text:error.message});
+                } finally { setExportBusy(false); }
             };
 
             const handleScreenshot = async () => {
@@ -585,7 +637,7 @@
 
                     {/* 系統提示視窗 */}
                     {sysMsg && (
-                        <div className="modal-overlay" onClick={() => setSysMsg(null)}>
+                        <div className="modal-overlay" style={{zIndex:10050}} onClick={() => setSysMsg(null)}>
                             <div className="bg-white p-6 md:p-8 rounded-3xl max-w-[90%] md:max-w-md w-full shadow-2xl flex flex-col items-center text-center max-h-[85vh] animate-in zoom-in-95 duration-300" onClick={e => e.stopPropagation()}>
                                 {sysMsg.type === 'import_success' ? (
                                     <div className="[&>svg]:w-12 [&>svg]:h-12 md:[&>svg]:w-16 md:[&>svg]:h-16 text-emerald-500 mb-4 bg-emerald-50 p-4 rounded-full"><Icons.CheckCircle /></div>
@@ -673,17 +725,39 @@
                         </div>
                     )}
 
+                    {showInventoryList && (
+                        <div className="modal-overlay" onClick={()=>setShowInventoryList(false)}>
+                            <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col p-5" onClick={e=>e.stopPropagation()}>
+                                <div className="flex justify-between items-center"><h2 className="text-2xl font-black">完整庫存表{isLocalMode ? '（單機資料）' : ''}</h2><button onClick={()=>setShowInventoryList(false)} aria-label="關閉庫存表"><Icons.Close /></button></div>
+                                <p className="my-3">最後異動：{OrderTools.timeLabel(inventoryUpdatedAt)}</p>
+                                <div className="overflow-auto flex-1"><table className="w-full text-left"><thead><tr><th>商品</th><th>單價</th><th>庫存</th></tr></thead><tbody>
+                                    {OrderTools.inventoryRows(inventory).map(row=><tr key={row.id+'-'+row.price} className="border-b"><td className="py-3">{row.name}</td><td>＄{row.price}</td><td style={{color:row.stock<5?'#c00000':'#000',fontWeight:row.stock<5?700:400}}>{row.stock}</td></tr>)}
+                                </tbody></table></div>
+                                <button disabled={exportBusy} onClick={()=>exportImage('inventory')} className="mt-4 bg-sky-700 text-white p-3 rounded-xl font-bold">{exportBusy ? '產生中…' : '產生完整庫存 PNG'}</button>
+                            </div>
+                        </div>
+                    )}
+
+                    {showLogin && <div className="modal-overlay"><form className="bg-white p-6 rounded-2xl w-full max-w-sm space-y-4" onSubmit={e=>{e.preventDefault();loginAdmin();}}>
+                        <h2 className="text-2xl font-black">管理者登入</h2>
+                        <label className="block">帳號<select aria-label="管理者帳號" className="block w-full border p-3" value={loginId} onChange={e=>setLoginId(e.target.value)}><option value="admin1">管理者 1</option><option value="admin2">管理者 2</option><option value="admin3">管理者 3</option></select></label>
+                        <label className="block">PIN<input aria-label="PIN" type="password" inputMode="numeric" autoComplete="current-password" className="block w-full border p-3" value={loginPin} onChange={e=>setLoginPin(e.target.value)} /></label>
+                        <p role="alert" className="text-red-700">{loginError}</p>
+                        <button disabled={isSyncing} className="bg-sky-700 text-white p-3 rounded-xl w-full">登入</button>
+                        <button type="button" onClick={()=>{setLoginPin('');setShowLogin(false);}}>稍後登入，先查看庫存</button>
+                    </form></div>}
+                    {auditRows && <div className="modal-overlay" style={{zIndex:10020}}><div className="bg-white p-5 rounded-2xl max-h-[90vh] w-full max-w-4xl overflow-auto"><button onClick={()=>setAuditRows(null)}>關閉紀錄</button><h2 className="text-2xl font-bold">最近 500 筆庫存異動</h2><table className="w-full text-left"><thead><tr>{['商品','單價','修改前','修改後','時間','修改人','原因'].map(h=><th key={h}>{h}</th>)}</tr></thead><tbody>{auditRows.map(r=><tr key={r[0]}>{[r[2],r[3],r[4],r[5],OrderTools.timeLabel(r[6]),r[7],r[9]].map((v,i)=><td className="p-2 border-b" key={i}>{v}</td>)}</tr>)}</tbody></table></div></div>}
                     {/* 庫存管理視窗 (進化多單價版) */}
                     {showInventoryPanel && (
                         <div className="modal-overlay" onClick={()=>setShowInventoryPanel(false)}>
                             <div className="bg-white rounded-[2rem] w-full max-w-[95%] md:max-w-lg max-h-[90vh] flex flex-col shadow-2xl animate-in zoom-in-95 duration-300" onClick={e=>e.stopPropagation()}>
                                 <div className="p-4 md:p-6 bg-amber-600 text-white rounded-t-[2rem] flex justify-between items-center shadow-md z-10">
-                                    <h2 className="text-xl md:text-2xl font-black flex items-center gap-2 md:gap-3"><Icons.Package /> 庫存管理</h2>
+                                    <h2 className="text-xl md:text-2xl font-black flex items-center gap-2 md:gap-3"><Icons.Package /> 庫存後台</h2>
                                     <button onClick={()=>setShowInventoryPanel(false)}><Icons.Close /></button>
                                 </div>
                                 <div className="p-4 md:p-6 overflow-y-auto flex-1 bg-slate-50 space-y-3 md:space-y-4 custom-scrollbar">
                                     <p className="text-slate-500 font-bold mb-2 text-sm md:text-base">手動調整各品項的剩餘數量：<br/><span className="text-amber-600 text-xs md:text-sm">(包含開單區設定的「另價」商品庫存)</span></p>
-                                    {inventory.map(p => {
+                                    {inventoryDraft.map(p => {
                                         // 找出目前在開單區已經設定的「另價」有哪些
                                         const activeExtraPrices = (extraStdItems[p.id] || []).map(ext => parseInt(ext.price)).filter(val => !isNaN(val) && val > 0);
                                         // 找出資料庫中既有的 extraStocks 價格鍵
@@ -693,10 +767,11 @@
 
                                         return (
                                             <div key={`inv-${p.id}`} className="flex flex-col bg-white p-3 md:p-4 rounded-2xl border-2 border-slate-200 shadow-sm hover:border-amber-300 transition-colors">
+                                                <button onClick={()=>{const v=window.prompt('請輸入新增的單價');if(v===null || v.trim()==='')return;try{const key=OrderTools.priceKey(v);if(Number(key)===Number(p.defPrice))return;updateStockLocal(p.id,key,p.extraStocks[key] || 0);}catch(e){setSysMsg({type:'error',title:'單價錯誤',text:e.message});}}} className="text-sky-700 text-left font-bold mb-2">＋新增單價</button>
                                                 {/* 主庫存 */}
                                                 <div className="flex items-center justify-between mb-2">
                                                     <div className="font-black text-base md:text-lg text-slate-800 leading-tight">
-                                                        {p.name} <span className="text-sm text-slate-400 font-normal ml-1">(${stdPrices[p.id] || p.defPrice})</span>
+                                                        {p.name} <span className="text-sm text-slate-400 font-normal ml-1">(${p.defPrice})</span>
                                                     </div>
                                                     <div className="flex items-center bg-slate-100 rounded-xl p-1 md:p-1.5 border-2 border-slate-200">
                                                         <button onClick={() => updateStockLocal(p.id, null, p.stock - 1)} className="px-3 py-1 bg-white rounded-lg shadow-sm text-lg font-bold text-slate-600 active:bg-slate-200">-</button>
@@ -729,8 +804,8 @@
                                         )
                                     })}
                                 </div>
-                                <div className="p-3 md:p-4 bg-white border-t-4 border-slate-100 rounded-b-[2rem]">
-                                    <button onClick={handleFinishInventory} className="w-full bg-slate-800 text-white py-3 md:py-4 rounded-xl font-black text-lg md:text-xl shadow-lg active:scale-95 transition-transform flex items-center justify-center gap-2">更新至雲端</button>
+                                <button disabled={isSyncing || isLocalMode} onClick={showAudit}>查看庫存異動紀錄</button><div className="p-3 md:p-4 bg-white border-t-4 border-slate-100 rounded-b-[2rem]">
+                                    <button disabled={isSyncing} onClick={handleFinishInventory} className="w-full bg-slate-800 text-white py-3 md:py-4 rounded-xl font-black text-lg md:text-xl shadow-lg active:scale-95 transition-transform flex items-center justify-center gap-2">更新至雲端</button>
                                 </div>
                             </div>
                         </div>
@@ -871,15 +946,17 @@
                     {/* 視圖切換區塊 */}
                     {!showBill ? (
                         <div className="w-full max-w-4xl space-y-6 md:space-y-10 pb-28 md:pb-24">
+                            <div className="flex gap-3 items-center no-print"><span>{isLocalMode?'單機模式':admin?'管理者：'+admin.name:'尚未登入'}</span>{!isLocalMode && <button className="text-sky-800 font-bold" onClick={async()=>{if(!admin){setShowLogin(true);return;}try{await fetchGas('logout');}finally{sessionToken='';setAdmin(null);setHistory([]);setShowInventoryPanel(false);}}}>{admin?'登出':'管理者登入'}</button>}</div>
                             <div className="flex justify-between items-center no-print sticky top-2 z-20">
-                                <div className="flex gap-1.5 md:gap-2">
-                                    <button onClick={()=>setShowPriceModal(true)} className="flex items-center gap-1 bg-white/90 backdrop-blur text-sky-800 px-3 py-2 md:px-4 md:py-3 rounded-full shadow-lg font-bold border border-sky-100 text-[13px] md:text-lg">
+                                <div className="flex flex-wrap gap-1.5 md:gap-2">
+                                    <button onClick={()=>{if(!isLocalMode&&!admin){setShowLogin(true);return;}setShowPriceModal(true);}} className="flex items-center gap-1 bg-white/90 backdrop-blur text-sky-800 px-3 py-2 md:px-4 md:py-3 rounded-full shadow-lg font-bold border border-sky-100 text-[13px] md:text-lg">
                                         <Icons.CreditCard /> <span className="hidden md:inline">報價</span>
                                     </button>
-                                    <button onClick={()=>setShowInventoryPanel(true)} className="flex items-center gap-1 bg-white/90 backdrop-blur text-amber-700 px-3 py-2 md:px-4 md:py-3 rounded-full shadow-lg font-bold border border-amber-200 text-[13px] md:text-lg">
-                                        <Icons.Package /> <span className="hidden md:inline">庫存</span>
+                                    <button onClick={()=>{if(isLocalMode){setShowInventoryList(true);return;}setIsSyncing(true);fetchGas('init').then(data=>{applyServer(data);setShowInventoryList(true);}).catch(e=>setSysMsg({type:'error',title:'讀取失敗',text:e.message})).finally(()=>setIsSyncing(false));}} className="bg-white text-sky-800 px-3 py-2 rounded-full shadow-lg font-bold">庫存表</button>
+                                    <button onClick={openInventory} className="flex items-center gap-1 bg-white/90 backdrop-blur text-amber-700 px-3 py-2 md:px-4 md:py-3 rounded-full shadow-lg font-bold border border-amber-200 text-[13px] md:text-lg">
+                                        <Icons.Package /> <span>庫存後台</span>
                                     </button>
-                                    <button onClick={()=>setShowHistory(true)} className="flex items-center gap-1 bg-white/90 backdrop-blur text-sky-800 px-3 py-2 md:px-4 md:py-3 rounded-full shadow-lg font-bold border border-sky-100 text-[13px] md:text-lg">
+                                    <button onClick={()=>{if(!isLocalMode&&!admin){setShowLogin(true);return;}setShowHistory(true);}} className="flex items-center gap-1 bg-white/90 backdrop-blur text-sky-800 px-3 py-2 md:px-4 md:py-3 rounded-full shadow-lg font-bold border border-sky-100 text-[13px] md:text-lg">
                                         <Icons.History /> <span className="hidden md:inline">歷史</span>
                                     </button>
                                     <button onClick={()=>setShowChangelog(true)} className="flex items-center gap-1 bg-white/90 backdrop-blur text-purple-700 px-3 py-2 md:px-4 md:py-3 rounded-full shadow-lg font-bold border border-purple-200 text-[13px] md:text-lg">
@@ -1200,6 +1277,7 @@
                                 </div>
 
                                 <div className="p-4 md:p-6 bg-slate-100 flex flex-col md:flex-row gap-3 md:gap-6 no-print">
+                                    <button id="btn-thermal" disabled={exportBusy} onClick={()=>exportImage('label')} className="flex-1 bg-black text-white py-4 md:py-6 rounded-2xl font-black text-lg md:text-2xl flex items-center justify-center gap-2">{exportBusy ? '產生中…' : '黑白圖檔（精臣用）'}</button>
                                     <button id="btn-screenshot" onClick={handleScreenshot} className="flex-1 bg-emerald-600 text-white py-4 md:py-6 rounded-2xl md:rounded-3xl font-black text-lg md:text-2xl shadow-lg hover:bg-emerald-500 transition-all flex items-center justify-center gap-2 md:gap-3 active:scale-95">
                                         <Icons.Camera /> 彩色圖檔 (傳LINE用)
                                     </button>
@@ -1310,6 +1388,7 @@
                             )}
                         </>
                     )}
+                    {screenshotUrl && <div className="modal-overlay" style={{zIndex:10030}}><div className="bg-white rounded-2xl p-4 max-w-3xl w-full max-h-[95vh] overflow-auto"><button className="font-bold p-2" onClick={()=>setScreenshotUrl(null)}>關閉圖檔預覽</button><p>可長按圖片儲存，或使用下載按鈕。</p><a className="text-sky-700 font-bold" href={screenshotUrl} download="葳葳海鮮.png">下載 PNG</a><img className="w-full mt-3" src={screenshotUrl} alt="產生的圖檔預覽" /></div></div>}
                 </div>
             );
         }
