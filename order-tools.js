@@ -123,6 +123,48 @@
         ctx.putImageData(pixels,0,0);
         return canvas;
     }
+    function colorOrderCanvas(order) {
+        const rows=order.summary.items.map((item,index,items)=>({
+            ...item,
+            displayName:index>0 && item.baseId && item.baseId===items[index-1].baseId &&
+                (item.type==='一般'||item.type==='另價') && (items[index-1].type==='一般'||items[index-1].type==='另價') ? '' : item.name
+        }));
+        const probe=makeCanvas(1200,1)[1]; probe.font='400 48px "Noto Sans TC", sans-serif';
+        const rowHeights=rows.map(row=>Math.max(1,wrap(probe,row.displayName || '',590).length)*64+34);
+        const height=Math.max(1650,850+rowHeights.reduce((sum,value)=>sum+value,0));
+        if(height>6000) throw new Error('訂單明細過多，請拆成多張訂單後輸出圖片。');
+        const [canvas,ctx]=makeCanvas(1200,height);
+        ctx.fillStyle='#0f172a';ctx.fillRect(0,0,1200,240);
+        ctx.fillStyle='#fff';ctx.font='900 78px "Noto Sans TC", sans-serif';ctx.fillText('葳葳海鮮',70,52);
+        ctx.fillStyle='#94a3b8';ctx.font='700 30px "Noto Sans TC", sans-serif';ctx.fillText('ORDER CONFIRMATION',72,145);
+        ctx.textAlign='right';ctx.fillText(order.timestampStr || '',1130,154);ctx.textAlign='left';
+        let y=300;
+        ctx.fillStyle='#64748b';ctx.font='700 28px "Noto Sans TC", sans-serif';ctx.textAlign='center';ctx.fillText('客戶資訊',600,y);y+=58;
+        ctx.fillStyle='#000';ctx.font='900 62px "Noto Sans TC", sans-serif';ctx.fillText(order.orderer.isHandwritten?'________________':order.orderer.name,600,y);y+=88;
+        ctx.font='700 35px "Noto Sans TC", sans-serif';
+        if(order.orderer.phone){ctx.fillText(order.orderer.phone,600,y);y+=52;}
+        if(order.orderer.address){wrap(ctx,order.orderer.address,1050).forEach(line=>{ctx.fillText(line,600,y);y+=48;});}
+        ctx.textAlign='left';ctx.fillStyle='#cbd5e1';ctx.fillRect(70,y+12,1060,5);y+=60;
+        ctx.fillStyle='#000';ctx.font='900 34px "Noto Sans TC", sans-serif';
+        ctx.fillText('品項',70,y);ctx.fillText('單價',720,y);ctx.fillText('數量',900,y);ctx.fillText('小計',1030,y);y+=62;
+        rows.forEach((row,index)=>{
+            if(index%2){ctx.fillStyle='#f1f5f9';ctx.fillRect(60,y-14,1080,rowHeights[index]);}
+            ctx.fillStyle='#000';ctx.font='400 46px "Noto Sans TC", sans-serif';
+            wrap(ctx,row.displayName || '',590).forEach((line,lineIndex)=>ctx.fillText(line,70,y+lineIndex*60));
+            ctx.fillText('$'+row.price,720,y);ctx.fillText('x'+row.qty,900,y);ctx.fillText('$'+row.total,1030,y);
+            y+=rowHeights[index];
+        });
+        ctx.fillStyle='#cbd5e1';ctx.fillRect(70,y,1060,7);y+=48;
+        const totalLine=(label,value,color='#000',size=38)=>{ctx.fillStyle=color;ctx.font=`900 ${size}px "Noto Sans TC", sans-serif`;ctx.fillText(label,700,y);ctx.textAlign='right';ctx.fillText(value,1130,y);ctx.textAlign='left';y+=size+28;};
+        totalLine('商品總計','$'+order.summary.subtotal);
+        totalLine('運費','+'+order.summary.actualShip);
+        if(order.summary.actualDisc>0) totalLine('折讓','-'+order.summary.actualDisc,'#d97706');
+        ctx.fillStyle='#cbd5e1';ctx.fillRect(700,y,430,4);y+=32;
+        totalLine('總金額','$'+order.summary.grandTotal,'#dc2626',62);
+        ctx.fillStyle='#334155';ctx.font='900 30px "Noto Sans TC", sans-serif';ctx.fillText('匯款與聯絡資訊',70,y-150);
+        ctx.fillStyle='#0f172a';ctx.font='700 36px "Noto Sans TC", sans-serif';ctx.fillText('郵局(700) 0191289-0858464',70,y-92);ctx.fillText('吳庭葳  0910-745-919',70,y-40);
+        return canvas;
+    }
     function inventoryCanvas(rows, updatedAt, local) {
         const probe = makeCanvas(1100,1)[1]; probe.font='400 30px "Noto Sans TC", sans-serif';
         const heights = rows.map(r=>Math.max(1,wrap(probe,r.name,590).length)*42+24);
@@ -190,6 +232,6 @@
         downloadBlob(blob,filename);
         return blob;
     }
-    const api={priceKey,inventoryRows,deduct,reprice,timeLabel,wrap,labelCanvas,inventoryCanvas,physicalPng,pngBlob,downloadBlob,saveBlob,download};
+    const api={priceKey,inventoryRows,deduct,reprice,timeLabel,wrap,labelCanvas,colorOrderCanvas,inventoryCanvas,physicalPng,pngBlob,downloadBlob,saveBlob,download};
     if(typeof module!=='undefined') module.exports=api; else root.OrderTools=api;
 })(typeof window!=='undefined'?window:globalThis);

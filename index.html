@@ -94,7 +94,7 @@
         </div>
     </div>
 
-    <script src="order-tools.js"></script>
+    <script src="order-tools.js?v=20260920-2"></script>
     <script type="text/babel">
         const { useState, useMemo, useEffect } = React;
 
@@ -176,7 +176,7 @@
             if(action==='saveOrder') {delete stablePayload.timestampMs;delete stablePayload.timestampStr;}
             const fingerprint = JSON.stringify({action,payload:stablePayload});
             if (mutation && fetchGas.pending?.fingerprint !== fingerprint) fetchGas.pending = {fingerprint,id:crypto.randomUUID()};
-            const response = action === 'init' && !sessionToken ? await fetch(GAS_URL) : await fetch(GAS_URL, {
+            const response = action === 'init' && !sessionToken ? await fetch(GAS_URL+'?fresh='+Date.now(),{cache:'no-store'}) : await fetch(GAS_URL, {
                 method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
                 body:JSON.stringify({action,payload,token:sessionToken,requestId:mutation?fetchGas.pending.id:undefined})
             });
@@ -216,6 +216,7 @@
             const [loginId, setLoginId] = useState('admin1');
             const [loginPin, setLoginPin] = useState('');
             const [loginError, setLoginError] = useState('');
+            const [loginDestination, setLoginDestination] = useState(null);
             const [auditRows, setAuditRows] = useState(null);
             const pendingOrderId = React.useRef(null);
             const applyServer = data => {
@@ -236,11 +237,16 @@
                 setIsSyncing(true); setLoginError('');
                 try { const result=await fetchGas('login',{id:loginId,pin:loginPin});
                     sessionToken=result.token; setAdmin(result.user);setLoginPin('');
-                    applyServer(await fetchGas('init'));setShowLogin(false);
+                    const data=await fetchGas('init');applyServer(data);setShowLogin(false);
+                    if(loginDestination==='inventory') {
+                        setInventoryDraft(JSON.parse(JSON.stringify(restoreInventory(data.inventory))));
+                        setDraftRevision(data.revision);setShowInventoryPanel(true);
+                    }
+                    setLoginDestination(null);
                 } catch(e) {setLoginError(e.message);setLoginPin('');} finally {setIsSyncing(false);}
             };
             const openInventory = async () => {
-                if(!isLocalMode && !admin) {setShowLogin(true);return;}
+                if(!isLocalMode && !admin) {setLoginDestination('inventory');setShowLogin(true);return;}
                 setIsSyncing(true);
                 try { let items=inventory, rev=revision;
                     if(!isLocalMode){const data=await fetchGas('init');applyServer(data);items=restoreInventory(data.inventory);rev=data.revision;}
@@ -544,13 +550,9 @@
                 setExportBusy(true);
                 try {
                     await document.fonts.ready;
-                    const canvas = kind === 'label'
-                        ? OrderTools.labelCanvas({
-                            orderer, paymentStatus, creditAmount, summary,
-                            timestampStr:history.find(item=>item.dbId===currentOrderId)?.timestampStr || new Date().toLocaleString('zh-TW',{hour12:false})
-                        })
-                        : OrderTools.inventoryCanvas(OrderTools.inventoryRows(inventory), inventoryUpdatedAt, isLocalMode);
-                    const fileName=kind === 'label' ? '葳葳海鮮_黑白出貨單_100x150mm.png' : '葳葳海鮮_完整庫存表.png';
+                    const orderData={orderer,paymentStatus,creditAmount,summary,timestampStr:history.find(item=>item.dbId===currentOrderId)?.timestampStr || new Date().toLocaleString('zh-TW',{hour12:false})};
+                    const canvas = kind === 'label' ? OrderTools.labelCanvas(orderData) : kind === 'color' ? OrderTools.colorOrderCanvas(orderData) : OrderTools.inventoryCanvas(OrderTools.inventoryRows(inventory), inventoryUpdatedAt, isLocalMode);
+                    const fileName=kind === 'label' ? '葳葳海鮮_黑白出貨單_100x150mm.png' : kind === 'color' ? `葳葳海鮮訂單_${orderer.isHandwritten?'手寫單':orderer.name || '未命名'}.png` : '葳葳海鮮_完整庫存表.png';
                     const blob = await OrderTools.pngBlob(canvas,kind === 'label');
                     const reader = new FileReader();
                     reader.onload = () => {setScreenshotUrl(reader.result);setScreenshotBlob(blob);setScreenshotFileName(fileName);};
@@ -566,36 +568,7 @@
             };
 
             const handleScreenshot = async () => {
-                const element = document.getElementById('capture-target');
-                if (!element) return;
-                const btn = document.getElementById('btn-screenshot');
-                const originalText = btn.innerHTML;
-                btn.innerText = "生成中..."; btn.disabled = true;
-                
-                try {
-                    await new Promise(resolve => setTimeout(resolve, 300));
-                    const canvas = await html2canvas(element, { 
-                        scale: 2, useCORS: true, backgroundColor: '#ffffff', logging: false,
-                        windowWidth: 800, width: 800,       
-                        onclone: (clonedDoc) => {
-                            const target = clonedDoc.getElementById('capture-target');
-                            if (target) { target.style.width = '800px'; target.style.minWidth = '800px'; target.style.maxWidth = '800px'; }
-                            const container = clonedDoc.getElementById('preview-container');
-                            if (container) { container.style.width = '800px'; container.style.minWidth = '800px'; container.style.maxWidth = 'none'; container.style.overflow = 'visible'; }
-                        }
-                    });
-                    const imgData = canvas.toDataURL("image/png");
-                    const displayName = orderer.isHandwritten ? '手寫單' : orderer.name;
-                    const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/png'));
-                    if(!blob) throw new Error('圖檔產生失敗');
-                    setScreenshotBlob(blob);
-                    setScreenshotFileName(`葳葳海鮮訂單_${displayName || '未命名'}.png`);
-                    setScreenshotUrl(imgData);
-                } catch (error) { 
-                    setSysMsg({ type: 'error', title: '生成失敗', text: '處理圖片時發生錯誤。' }); 
-                } finally { 
-                    btn.innerHTML = originalText; btn.disabled = false; 
-                }
+                await exportImage('color');
             };
 
             // 若還沒準備好連線，且不是本機模式，顯示 Loading
@@ -753,7 +726,8 @@
                                 </tbody></table></div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-4">
                                     <button disabled={exportBusy} onClick={()=>exportImage('inventory')} className="bg-sky-700 text-white p-4 rounded-xl font-black text-lg md:text-xl">{exportBusy ? '產生中…' : '製作／下載庫存圖片'}</button>
-                                    <button onClick={()=>setShowInventoryList(false)} className="bg-slate-200 text-slate-800 p-4 rounded-xl font-black text-lg md:text-xl">← 返回系統繼續操作</button>
+                                    <button onClick={()=>{setShowInventoryList(false);openInventory();}} className="bg-amber-600 text-white p-4 rounded-xl font-black text-lg md:text-xl">管理者調整庫存</button>
+                                    <button onClick={()=>setShowInventoryList(false)} className="md:col-span-2 bg-slate-200 text-slate-800 p-4 rounded-xl font-black text-lg md:text-xl">← 返回系統繼續操作</button>
                                 </div>
                             </div>
                         </div>
@@ -973,10 +947,7 @@
                                     <button onClick={()=>{if(!isLocalMode&&!admin){setShowLogin(true);return;}setShowPriceModal(true);}} className="flex items-center gap-1 bg-white/90 backdrop-blur text-sky-800 px-3 py-2 md:px-4 md:py-3 rounded-full shadow-lg font-bold border border-sky-100 text-[13px] md:text-lg">
                                         <Icons.CreditCard /> <span className="hidden md:inline">報價</span>
                                     </button>
-                                    <button onClick={()=>{if(isLocalMode){setShowInventoryList(true);return;}setIsSyncing(true);fetchGas('init').then(data=>{applyServer(data);setShowInventoryList(true);}).catch(e=>setSysMsg({type:'error',title:'讀取失敗',text:e.message})).finally(()=>setIsSyncing(false));}} className="bg-white text-sky-800 px-3 py-2 rounded-full shadow-lg font-bold">庫存表</button>
-                                    <button onClick={openInventory} className="flex items-center gap-1 bg-white/90 backdrop-blur text-amber-700 px-3 py-2 md:px-4 md:py-3 rounded-full shadow-lg font-bold border border-amber-200 text-[13px] md:text-lg">
-                                        <Icons.Package /> <span>庫存後台</span>
-                                    </button>
+                                    <button onClick={()=>{if(isLocalMode){setShowInventoryList(true);return;}setIsSyncing(true);fetchGas('init').then(data=>{applyServer(data);setShowInventoryList(true);}).catch(e=>setSysMsg({type:'error',title:'讀取失敗',text:e.message})).finally(()=>setIsSyncing(false));}} className="flex items-center gap-1 bg-white text-sky-800 px-3 py-2 md:px-4 md:py-3 rounded-full shadow-lg font-bold border border-sky-100 text-[13px] md:text-lg"><Icons.Package /> <span>庫存</span></button>
                                     <button onClick={()=>{if(!isLocalMode&&!admin){setShowLogin(true);return;}setShowHistory(true);}} className="flex items-center gap-1 bg-white/90 backdrop-blur text-sky-800 px-3 py-2 md:px-4 md:py-3 rounded-full shadow-lg font-bold border border-sky-100 text-[13px] md:text-lg">
                                         <Icons.History /> <span className="hidden md:inline">歷史</span>
                                     </button>
@@ -1143,7 +1114,7 @@
                                         if(limitedItems.length>=10) return setSysMsg({type: 'warning', title: '超過上限', text: '期間限定項目最多 10 項。'});
                                         if(!newLimited.name || !newLimited.price || !newLimited.qty) return setSysMsg({type: 'warning', title: '資料不完整', text: '請填寫品名、單價與數量。'});
                                         setLimitedItems([...limitedItems, {...newLimited, id:Date.now(), price:parseInt(newLimited.price), qty:parseInt(newLimited.qty)}]);
-                                        setNewLimited({name:'', price:'', qty:1});
+                                        setNewLimited({name:'', price:'', qty:''});
                                     }} className="w-full md:col-span-2 bg-gradient-to-b from-sky-500 to-sky-700 text-white p-3 md:p-4 rounded-xl md:rounded-2xl flex items-center justify-center gap-2 font-black text-lg md:text-xl shadow-[0_4px_0_rgb(3,105,161)] active:shadow-[0_0px_0_rgb(3,105,161)] active:translate-y-1 transition-all">
                                         <Icons.Plus /> <span>新增</span>
                                     </button>
@@ -1171,7 +1142,7 @@
                                             if(sharingItems.length>=10) return setSysMsg({type: 'warning', title: '超過上限', text: '友情分享項目最多 10 項。'});
                                             if(!newSharing.name || !newSharing.qty) return setSysMsg({type: 'warning', title: '資料不完整', text: '請填寫品名與數量。'});
                                             setSharingItems([...sharingItems, {...newSharing, id:Date.now(), qty:parseInt(newSharing.qty)}]);
-                                            setNewSharing({name:'', qty:1});
+                                            setNewSharing({name:'', qty:''});
                                         }} className="flex-1 md:col-span-2 bg-gradient-to-b from-emerald-500 to-emerald-700 text-white p-3 md:p-4 rounded-xl md:rounded-2xl flex items-center justify-center gap-2 font-black text-lg md:text-xl shadow-[0_4px_0_rgb(4,120,87)] active:shadow-[0_0px_0_rgb(4,120,87)] active:translate-y-1 transition-all">
                                             <Icons.Plus /> <span>分享</span>
                                         </button>
