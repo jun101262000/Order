@@ -133,7 +133,8 @@
         }));
         const probe=makeCanvas(1200,1)[1]; probe.font='400 48px "Noto Sans TC", sans-serif';
         const rowHeights=rows.map(row=>Math.max(1,wrap(probe,row.displayName || '',590).length)*64+34);
-        const height=Math.max(1650,850+rowHeights.reduce((sum,value)=>sum+value,0));
+        // Footer needs enough room for large contact details and totals on small screens.
+        const height=Math.max(1800,1150+rowHeights.reduce((sum,value)=>sum+value,0));
         if(height>6000) throw new Error('訂單明細過多，請拆成多張訂單後輸出圖片。');
         const [canvas,ctx]=makeCanvas(1200,height);
         ctx.fillStyle='#0f172a';ctx.fillRect(0,0,1200,240);
@@ -163,8 +164,12 @@
         if(order.summary.actualDisc>0) totalLine('折讓','-'+order.summary.actualDisc,'#d97706');
         ctx.fillStyle='#cbd5e1';ctx.fillRect(700,y,430,4);y+=32;
         totalLine('總金額','$'+order.summary.grandTotal,'#dc2626',62);
-        ctx.fillStyle='#334155';ctx.font='900 38px "Noto Sans TC", sans-serif';ctx.fillText('匯款與聯絡資訊',70,y-175);
-        ctx.fillStyle='#0f172a';ctx.font='900 52px "Noto Sans TC", sans-serif';ctx.fillText('郵局(700) 0191289-0858464',70,y-118);ctx.fillText('吳庭葳  0910-745-919',70,y-52);
+        const contactTop=y-190;
+        ctx.fillStyle='#334155';ctx.font='900 38px "Noto Sans TC", sans-serif';ctx.fillText('匯款與聯絡資訊',70,contactTop);
+        ctx.fillStyle='#0f172a';ctx.font='900 48px "Noto Sans TC", sans-serif';
+        let contactY=contactTop+58;
+        wrap(ctx,'郵局(700) 0191289-0858464',545).forEach(line=>{ctx.fillText(line,70,contactY);contactY+=58;});
+        wrap(ctx,'吳庭葳  0910-745-919',545).forEach(line=>{ctx.fillText(line,70,contactY);contactY+=58;});
         return canvas;
     }
     function inventoryCanvas(rows, updatedAt, local) {
