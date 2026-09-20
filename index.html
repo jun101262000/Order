@@ -94,7 +94,7 @@
         </div>
     </div>
 
-    <script src="order-tools.js?v=20260920-2"></script>
+    <script src="order-tools.js?v=20260920-4"></script>
     <script type="text/babel">
         const { useState, useMemo, useEffect } = React;
 
@@ -209,11 +209,9 @@
             const [revision, setRevision] = useState(0);
             const [draftRevision, setDraftRevision] = useState(0);
             const [admin, setAdmin] = useState(null);
-            const [adminOptions, setAdminOptions] = useState([
-                {id:'admin1',name:'管理者 1'}, {id:'admin2',name:'管理者 2'}, {id:'admin3',name:'管理者 3'}
-            ]);
+            const [adminOptions, setAdminOptions] = useState([]);
             const [showLogin, setShowLogin] = useState(false);
-            const [loginId, setLoginId] = useState('admin1');
+            const [loginId, setLoginId] = useState('');
             const [loginPin, setLoginPin] = useState('');
             const [loginError, setLoginError] = useState('');
             const [loginDestination, setLoginDestination] = useState(null);
@@ -342,6 +340,11 @@
                     let ords = res.orders || [];
                     ords.sort((a,b) => b.timestampMs - a.timestampMs); 
                     setHistory(ords);
+
+                    if (Array.isArray(res.admins) && res.admins.length) {
+                        setAdminOptions(res.admins);
+                        setLoginId(res.admins[0].id);
+                    }
 
                     setDbReady(true);
                     if(!window.hasShownPriceModal) {
@@ -653,8 +656,8 @@
                                 </div>
                                 <div className="p-5 md:p-8 overflow-y-auto space-y-6 custom-scrollbar text-slate-700 bg-slate-50">
                                     <div className="relative pl-4 border-l-4 border-purple-500">
-                                        <h3 className="font-black text-lg text-purple-800 mb-1">v0803 (穩定版)</h3>
-                                        <p className="text-xs text-slate-400 mb-2 font-bold">2026/08/03</p>
+                                        <h3 className="font-black text-lg text-purple-800 mb-1">v0920-002</h3>
+                                        <p className="text-xs text-slate-400 mb-2 font-bold">2026/09/20</p>
                                         <ul className="list-disc pl-4 space-y-1 text-sm font-bold text-slate-600">
                                             <li><span className="text-purple-600">修正嚴重崩潰</span>：修正 React 渲染週期錯誤，解決畫面一片空白與 Error #310 的問題。</li>
                                             <li><span className="text-purple-600">多單價庫存</span>：現在不僅能多單價結帳，還能在庫存管理面板中，針對不同單價各別管理剩餘庫存！</li>
@@ -721,8 +724,8 @@
                             <div className="bg-white rounded-2xl w-full md:max-w-3xl h-[94vh] md:h-auto md:max-h-[92vh] flex flex-col p-4 md:p-6" onClick={e=>e.stopPropagation()}>
                                 <div className="flex justify-between items-center gap-3"><h2 className="text-2xl md:text-3xl font-black">完整庫存表{isLocalMode ? '（單機資料）' : ''}</h2><button className="p-2" onClick={()=>setShowInventoryList(false)} aria-label="返回系統"><Icons.Close /></button></div>
                                 <p className="my-3 text-base md:text-xl font-bold">最後異動：{OrderTools.timeLabel(inventoryUpdatedAt)}</p>
-                                <div className="overflow-auto flex-1 border rounded-xl"><table className="w-full min-w-[460px] text-left text-lg md:text-2xl"><thead className="sticky top-0 bg-slate-100"><tr><th className="p-3">商品</th><th className="p-3">單價</th><th className="p-3">庫存</th></tr></thead><tbody>
-                                    {OrderTools.inventoryRows(inventory).map(row=><tr key={row.id+'-'+row.price} className="border-b"><td className="p-3 md:p-4 font-bold">{row.name}</td><td className="p-3 md:p-4">＄{row.price}</td><td className="p-3 md:p-4" style={{color:row.stock<5?'#c00000':'#000',fontWeight:row.stock<5?900:700}}>{row.stock}</td></tr>)}
+                                <div className="overflow-y-auto overflow-x-hidden flex-1 border rounded-xl"><table className="w-full table-fixed text-left text-base sm:text-lg md:text-2xl"><colgroup><col className="w-[54%]"/><col className="w-[26%]"/><col className="w-[20%]"/></colgroup><thead className="sticky top-0 bg-slate-100"><tr><th className="p-2 sm:p-3">商品</th><th className="p-2 sm:p-3">單價</th><th className="p-2 sm:p-3">庫存</th></tr></thead><tbody>
+                                    {OrderTools.inventoryRows(inventory).map(row=><tr key={row.id+'-'+row.price} className="border-b"><td className="p-2 sm:p-3 md:p-4 font-bold break-words leading-tight">{row.name}</td><td className="p-2 sm:p-3 md:p-4 whitespace-nowrap">＄{row.price}</td><td className="p-2 sm:p-3 md:p-4 whitespace-nowrap" style={{color:row.stock<5?'#c00000':'#000',fontWeight:row.stock<5?900:700}}>{row.stock}</td></tr>)}
                                 </tbody></table></div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-4">
                                     <button disabled={exportBusy} onClick={()=>exportImage('inventory')} className="bg-sky-700 text-white p-4 rounded-xl font-black text-lg md:text-xl">{exportBusy ? '產生中…' : '製作／下載庫存圖片'}</button>
@@ -735,10 +738,10 @@
 
                     {showLogin && <div className="modal-overlay"><form className="bg-white p-6 rounded-2xl w-full max-w-sm space-y-4" onSubmit={e=>{e.preventDefault();loginAdmin();}}>
                         <h2 className="text-2xl font-black">管理者登入</h2>
-                        <label className="block">帳號<select aria-label="管理者帳號" className="block w-full border p-3" value={loginId} onChange={e=>setLoginId(e.target.value)}>{adminOptions.map(user=><option key={user.id} value={user.id}>{user.name}</option>)}</select></label>
+                        <label className="block">帳號<select aria-label="管理者帳號" disabled={!adminOptions.length} className="block w-full border p-3 disabled:text-slate-500" value={loginId} onChange={e=>setLoginId(e.target.value)}>{adminOptions.length ? adminOptions.map(user=><option key={user.id} value={user.id}>{user.name}</option>) : <option value="">帳號讀取中…</option>}</select></label>
                         <label className="block">PIN<input aria-label="PIN" type="password" inputMode="numeric" autoComplete="current-password" className="block w-full border p-3" value={loginPin} onChange={e=>setLoginPin(e.target.value)} /></label>
                         <p role="alert" className="text-red-700">{loginError}</p>
-                        <button disabled={isSyncing} className="bg-sky-700 text-white p-3 rounded-xl w-full">登入</button>
+                        <button disabled={isSyncing || !adminOptions.length} className="bg-sky-700 disabled:bg-slate-400 text-white p-3 rounded-xl w-full">登入</button>
                         <button type="button" onClick={()=>{setLoginPin('');setShowLogin(false);}}>稍後登入，先查看庫存</button>
                     </form></div>}
                     {auditRows && <div className="modal-overlay" style={{zIndex:10020}}><div className="bg-white p-5 rounded-2xl max-h-[90vh] w-full max-w-4xl flex flex-col"><div className="flex justify-between items-center gap-3 mb-3"><h2 className="text-2xl font-bold">最近 500 筆庫存異動</h2><button className="bg-slate-200 px-4 py-3 rounded-xl font-black" onClick={()=>setAuditRows(null)}>← 返回庫存後台</button></div><div className="overflow-auto"><table className="w-full text-left min-w-[760px]"><thead><tr>{['商品','單價','修改前','修改後','時間','修改人','原因'].map(h=><th key={h}>{h}</th>)}</tr></thead><tbody>{auditRows.map(r=><tr key={r[0]}>{[r[2],r[3],r[4],r[5],OrderTools.timeLabel(r[6]),r[7],r[9]].map((v,i)=><td className="p-2 border-b" key={i}>{v}</td>)}</tr>)}</tbody></table></div></div></div>}
@@ -762,7 +765,7 @@
 
                                         return (
                                             <div key={`inv-${p.id}`} className="flex flex-col bg-white p-3 md:p-4 rounded-2xl border-2 border-slate-200 shadow-sm hover:border-amber-300 transition-colors">
-                                                <button onClick={()=>{const v=window.prompt('請輸入新增的單價');if(v===null || v.trim()==='')return;try{const key=OrderTools.priceKey(v);if(Number(key)===Number(p.defPrice))return;updateStockLocal(p.id,key,p.extraStocks[key] || 0);}catch(e){setSysMsg({type:'error',title:'單價錯誤',text:e.message});}}} className="text-sky-700 text-left font-bold mb-2">＋新增單價</button>
+                                                {[1,2,3,12].includes(p.id) && <button onClick={()=>{const v=window.prompt('請輸入新增的單價');if(v===null || v.trim()==='')return;try{const key=OrderTools.priceKey(v);if(Number(key)===Number(p.defPrice))return;updateStockLocal(p.id,key,p.extraStocks[key] || 0);}catch(e){setSysMsg({type:'error',title:'單價錯誤',text:e.message});}}} className="text-sky-700 text-left font-bold mb-2">＋新增單價</button>}
                                                 {/* 主庫存 */}
                                                 <div className="flex items-center justify-between mb-2">
                                                     <div className="font-black text-base md:text-lg text-slate-800 leading-tight">
@@ -971,7 +974,7 @@
                                         ) : (
                                             <span className="text-[10px] md:text-xs bg-emerald-100 text-emerald-700 px-2 py-1 rounded-full font-bold">📝 表單已連線</span>
                                         )}
-                                        <span className="text-[10px] md:text-xs bg-sky-100 text-sky-700 px-2 py-1 rounded-full font-bold cursor-pointer" onClick={()=>setShowChangelog(true)}>v0803 更新</span>
+                                        <span className="text-[10px] md:text-xs bg-sky-100 text-sky-700 px-2 py-1 rounded-full font-bold cursor-pointer" onClick={()=>setShowChangelog(true)}>v0920-002</span>
                                     </p>
                                 </div>
                             </header>
@@ -1033,7 +1036,7 @@
                                         const price = parseInt(stdPrices[p.id]) || 0;
                                         const sub = qty * price;
                                         const extras = extraStdItems[p.id] || [];
-                                        const hasExtraSupport = [1, 2, 3].includes(p.id);
+                                        const hasExtraSupport = [1, 2, 3, 12].includes(p.id);
                                         const isActive = qty > 0 || extras.length > 0;
 
                                         return (
@@ -1380,7 +1383,7 @@
                             )}
                         </>
                     )}
-                    {screenshotUrl && <div className="modal-overlay" style={{zIndex:10030}}><div className="bg-white rounded-2xl p-4 max-w-3xl w-full max-h-[95vh] overflow-auto"><div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3"><button onClick={savePreparedImage} className="text-center bg-emerald-700 text-white text-xl font-black px-5 py-4 rounded-xl">⬇ 儲存到照片圖庫／下載 PNG</button><button className="bg-slate-200 text-slate-800 text-lg font-black px-5 py-4 rounded-xl" onClick={()=>{setScreenshotUrl(null);setScreenshotBlob(null);}}>← 返回系統繼續操作</button></div><p className="text-base font-bold text-slate-600">手機或平板：按綠色按鈕後，在分享選單選擇「儲存影像」。若裝置沒有分享功能，也可以長按下方圖片儲存。</p><img className="w-full mt-3" src={screenshotUrl} alt="產生的圖檔預覽" /></div></div>}
+                    {screenshotUrl && <div className="modal-overlay" style={{zIndex:10030}}><div className="bg-white rounded-2xl p-3 sm:p-4 max-w-3xl w-full max-h-[95vh] overflow-auto"><div className="grid grid-cols-2 gap-2 sm:gap-3 mb-3"><button onClick={savePreparedImage} className="text-center bg-emerald-700 text-white text-sm sm:text-lg md:text-xl font-black px-2 sm:px-5 py-3 sm:py-4 rounded-xl leading-tight">⬇ 儲存／下載 PNG</button><button className="bg-slate-200 text-slate-800 text-sm sm:text-lg font-black px-2 sm:px-5 py-3 sm:py-4 rounded-xl leading-tight" onClick={()=>{setScreenshotUrl(null);setScreenshotBlob(null);}}>← 返回系統</button></div><img className="w-full" src={screenshotUrl} alt="產生的圖檔預覽" /></div></div>}
                 </div>
             );
         }
