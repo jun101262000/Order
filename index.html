@@ -209,6 +209,9 @@
             const [revision, setRevision] = useState(0);
             const [draftRevision, setDraftRevision] = useState(0);
             const [admin, setAdmin] = useState(null);
+            const [adminOptions, setAdminOptions] = useState([
+                {id:'admin1',name:'管理者 1'}, {id:'admin2',name:'管理者 2'}, {id:'admin3',name:'管理者 3'}
+            ]);
             const [showLogin, setShowLogin] = useState(false);
             const [loginId, setLoginId] = useState('admin1');
             const [loginPin, setLoginPin] = useState('');
@@ -219,6 +222,10 @@
                 setInventory(restoreInventory(data.inventory)); setRevision(data.revision);
                 setInventoryUpdatedAt(data.inventoryUpdatedAt || null);
                 setHistory((data.orders || []).sort((a,b)=>b.timestampMs-a.timestampMs));
+                if (Array.isArray(data.admins) && data.admins.length) {
+                    setAdminOptions(data.admins);
+                    if (!data.admins.some(user=>user.id===loginId)) setLoginId(data.admins[0].id);
+                }
             };
             useEffect(()=>{
                 const expired=()=>{sessionToken='';setAdmin(null);setShowLogin(true);};
@@ -267,6 +274,8 @@
             
             const [showBill, setShowBill] = useState(false);
             const [screenshotUrl, setScreenshotUrl] = useState(null);
+            const [screenshotBlob, setScreenshotBlob] = useState(null);
+            const [screenshotFileName, setScreenshotFileName] = useState('葳葳海鮮.png');
             const [showDetailDrawer, setShowDetailDrawer] = useState(false);
             const [currentOrderId, setCurrentOrderId] = useState(null);
             const [confirmAction, setConfirmAction] = useState(null);
@@ -373,7 +382,7 @@
                 setShip({ type: 'free', fee: '' }); setDiscount('');
                 setNewLimited({ name: '', price: '', qty: '' }); setNewSharing({ name: '', qty: '' });
                 pendingOrderId.current=null;
-                setCurrentOrderId(null); setShowBill(false); setScreenshotUrl(null);
+                setCurrentOrderId(null); setShowBill(false); setScreenshotUrl(null);setScreenshotBlob(null);
                 window.scrollTo(0, 0); setConfirmAction(null);
             };
 
@@ -536,15 +545,24 @@
                 try {
                     await document.fonts.ready;
                     const canvas = kind === 'label'
-                        ? OrderTools.labelCanvas({id:currentOrderId, orderer, paymentStatus, creditAmount, summary})
+                        ? OrderTools.labelCanvas({
+                            orderer, paymentStatus, creditAmount, summary,
+                            timestampStr:history.find(item=>item.dbId===currentOrderId)?.timestampStr || new Date().toLocaleString('zh-TW',{hour12:false})
+                        })
                         : OrderTools.inventoryCanvas(OrderTools.inventoryRows(inventory), inventoryUpdatedAt, isLocalMode);
-                    const blob = await OrderTools.download(canvas, kind === 'label' ? '出貨單_100x150mm.png' : '完整庫存表.png', kind === 'label');
+                    const fileName=kind === 'label' ? '葳葳海鮮_黑白出貨單_100x150mm.png' : '葳葳海鮮_完整庫存表.png';
+                    const blob = await OrderTools.pngBlob(canvas,kind === 'label');
                     const reader = new FileReader();
-                    reader.onload = () => setScreenshotUrl(reader.result);
+                    reader.onload = () => {setScreenshotUrl(reader.result);setScreenshotBlob(blob);setScreenshotFileName(fileName);};
                     reader.readAsDataURL(blob);
                 } catch (error) {
                     setSysMsg({type:'error',title:'圖檔輸出失敗',text:error.message});
                 } finally { setExportBusy(false); }
+            };
+
+            const savePreparedImage = async () => {
+                if(!screenshotBlob) return;
+                await OrderTools.saveBlob(screenshotBlob,screenshotFileName,navigator);
             };
 
             const handleScreenshot = async () => {
@@ -568,12 +586,11 @@
                     });
                     const imgData = canvas.toDataURL("image/png");
                     const displayName = orderer.isHandwritten ? '手寫單' : orderer.name;
-                    if (navigator.share) {
-                        canvas.toBlob(async (blob) => {
-                            const file = new File([blob], `葳葳海鮮訂單_${displayName}.png`, { type: "image/png" });
-                            try { await navigator.share({ files: [file], title: '葳葳海鮮訂單', text: `這是 ${displayName} 的訂單` }); } catch (err) { setScreenshotUrl(imgData); }
-                        }, 'image/png');
-                    } else { setScreenshotUrl(imgData); }
+                    const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/png'));
+                    if(!blob) throw new Error('圖檔產生失敗');
+                    setScreenshotBlob(blob);
+                    setScreenshotFileName(`葳葳海鮮訂單_${displayName || '未命名'}.png`);
+                    setScreenshotUrl(imgData);
                 } catch (error) { 
                     setSysMsg({ type: 'error', title: '生成失敗', text: '處理圖片時發生錯誤。' }); 
                 } finally { 
@@ -717,6 +734,7 @@
                                     ))}
                                 </div>
                                 <div className="p-3 md:p-4 bg-white border-t-4 border-slate-100 rounded-b-[2rem]">
+                                    <button type="button" onClick={()=>setShowPriceModal(false)} className="w-full mb-3 bg-slate-200 text-slate-700 py-3 rounded-xl font-black text-lg">← 返回系統，不儲存</button>
                                     <button onClick={savePricesToDb} className="w-full bg-sky-700 text-white py-3 md:py-4 rounded-xl font-black text-lg md:text-xl shadow-lg active:scale-95 transition-transform flex items-center justify-center gap-2">
                                         <Icons.Check /> 儲存並開始接單
                                     </button>
@@ -727,26 +745,29 @@
 
                     {showInventoryList && (
                         <div className="modal-overlay" onClick={()=>setShowInventoryList(false)}>
-                            <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col p-5" onClick={e=>e.stopPropagation()}>
-                                <div className="flex justify-between items-center"><h2 className="text-2xl font-black">完整庫存表{isLocalMode ? '（單機資料）' : ''}</h2><button onClick={()=>setShowInventoryList(false)} aria-label="關閉庫存表"><Icons.Close /></button></div>
-                                <p className="my-3">最後異動：{OrderTools.timeLabel(inventoryUpdatedAt)}</p>
-                                <div className="overflow-auto flex-1"><table className="w-full text-left"><thead><tr><th>商品</th><th>單價</th><th>庫存</th></tr></thead><tbody>
-                                    {OrderTools.inventoryRows(inventory).map(row=><tr key={row.id+'-'+row.price} className="border-b"><td className="py-3">{row.name}</td><td>＄{row.price}</td><td style={{color:row.stock<5?'#c00000':'#000',fontWeight:row.stock<5?700:400}}>{row.stock}</td></tr>)}
+                            <div className="bg-white rounded-2xl w-full md:max-w-3xl h-[94vh] md:h-auto md:max-h-[92vh] flex flex-col p-4 md:p-6" onClick={e=>e.stopPropagation()}>
+                                <div className="flex justify-between items-center gap-3"><h2 className="text-2xl md:text-3xl font-black">完整庫存表{isLocalMode ? '（單機資料）' : ''}</h2><button className="p-2" onClick={()=>setShowInventoryList(false)} aria-label="返回系統"><Icons.Close /></button></div>
+                                <p className="my-3 text-base md:text-xl font-bold">最後異動：{OrderTools.timeLabel(inventoryUpdatedAt)}</p>
+                                <div className="overflow-auto flex-1 border rounded-xl"><table className="w-full min-w-[460px] text-left text-lg md:text-2xl"><thead className="sticky top-0 bg-slate-100"><tr><th className="p-3">商品</th><th className="p-3">單價</th><th className="p-3">庫存</th></tr></thead><tbody>
+                                    {OrderTools.inventoryRows(inventory).map(row=><tr key={row.id+'-'+row.price} className="border-b"><td className="p-3 md:p-4 font-bold">{row.name}</td><td className="p-3 md:p-4">＄{row.price}</td><td className="p-3 md:p-4" style={{color:row.stock<5?'#c00000':'#000',fontWeight:row.stock<5?900:700}}>{row.stock}</td></tr>)}
                                 </tbody></table></div>
-                                <button disabled={exportBusy} onClick={()=>exportImage('inventory')} className="mt-4 bg-sky-700 text-white p-3 rounded-xl font-bold">{exportBusy ? '產生中…' : '產生完整庫存 PNG'}</button>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-4">
+                                    <button disabled={exportBusy} onClick={()=>exportImage('inventory')} className="bg-sky-700 text-white p-4 rounded-xl font-black text-lg md:text-xl">{exportBusy ? '產生中…' : '製作／下載庫存圖片'}</button>
+                                    <button onClick={()=>setShowInventoryList(false)} className="bg-slate-200 text-slate-800 p-4 rounded-xl font-black text-lg md:text-xl">← 返回系統繼續操作</button>
+                                </div>
                             </div>
                         </div>
                     )}
 
                     {showLogin && <div className="modal-overlay"><form className="bg-white p-6 rounded-2xl w-full max-w-sm space-y-4" onSubmit={e=>{e.preventDefault();loginAdmin();}}>
                         <h2 className="text-2xl font-black">管理者登入</h2>
-                        <label className="block">帳號<select aria-label="管理者帳號" className="block w-full border p-3" value={loginId} onChange={e=>setLoginId(e.target.value)}><option value="admin1">管理者 1</option><option value="admin2">管理者 2</option><option value="admin3">管理者 3</option></select></label>
+                        <label className="block">帳號<select aria-label="管理者帳號" className="block w-full border p-3" value={loginId} onChange={e=>setLoginId(e.target.value)}>{adminOptions.map(user=><option key={user.id} value={user.id}>{user.name}</option>)}</select></label>
                         <label className="block">PIN<input aria-label="PIN" type="password" inputMode="numeric" autoComplete="current-password" className="block w-full border p-3" value={loginPin} onChange={e=>setLoginPin(e.target.value)} /></label>
                         <p role="alert" className="text-red-700">{loginError}</p>
                         <button disabled={isSyncing} className="bg-sky-700 text-white p-3 rounded-xl w-full">登入</button>
                         <button type="button" onClick={()=>{setLoginPin('');setShowLogin(false);}}>稍後登入，先查看庫存</button>
                     </form></div>}
-                    {auditRows && <div className="modal-overlay" style={{zIndex:10020}}><div className="bg-white p-5 rounded-2xl max-h-[90vh] w-full max-w-4xl overflow-auto"><button onClick={()=>setAuditRows(null)}>關閉紀錄</button><h2 className="text-2xl font-bold">最近 500 筆庫存異動</h2><table className="w-full text-left"><thead><tr>{['商品','單價','修改前','修改後','時間','修改人','原因'].map(h=><th key={h}>{h}</th>)}</tr></thead><tbody>{auditRows.map(r=><tr key={r[0]}>{[r[2],r[3],r[4],r[5],OrderTools.timeLabel(r[6]),r[7],r[9]].map((v,i)=><td className="p-2 border-b" key={i}>{v}</td>)}</tr>)}</tbody></table></div></div>}
+                    {auditRows && <div className="modal-overlay" style={{zIndex:10020}}><div className="bg-white p-5 rounded-2xl max-h-[90vh] w-full max-w-4xl flex flex-col"><div className="flex justify-between items-center gap-3 mb-3"><h2 className="text-2xl font-bold">最近 500 筆庫存異動</h2><button className="bg-slate-200 px-4 py-3 rounded-xl font-black" onClick={()=>setAuditRows(null)}>← 返回庫存後台</button></div><div className="overflow-auto"><table className="w-full text-left min-w-[760px]"><thead><tr>{['商品','單價','修改前','修改後','時間','修改人','原因'].map(h=><th key={h}>{h}</th>)}</tr></thead><tbody>{auditRows.map(r=><tr key={r[0]}>{[r[2],r[3],r[4],r[5],OrderTools.timeLabel(r[6]),r[7],r[9]].map((v,i)=><td className="p-2 border-b" key={i}>{v}</td>)}</tr>)}</tbody></table></div></div></div>}
                     {/* 庫存管理視窗 (進化多單價版) */}
                     {showInventoryPanel && (
                         <div className="modal-overlay" onClick={()=>setShowInventoryPanel(false)}>
@@ -1277,7 +1298,7 @@
                                 </div>
 
                                 <div className="p-4 md:p-6 bg-slate-100 flex flex-col md:flex-row gap-3 md:gap-6 no-print">
-                                    <button id="btn-thermal" disabled={exportBusy} onClick={()=>exportImage('label')} className="flex-1 bg-black text-white py-4 md:py-6 rounded-2xl font-black text-lg md:text-2xl flex items-center justify-center gap-2">{exportBusy ? '產生中…' : '黑白圖檔（精臣用）'}</button>
+                                    <button id="btn-thermal" disabled={exportBusy} onClick={()=>exportImage('label')} className="flex-1 bg-black text-white py-4 md:py-6 rounded-2xl font-black text-lg md:text-2xl flex items-center justify-center gap-2"><Icons.Camera /> {exportBusy ? '下載中…' : '下載黑白出貨單 PNG'}</button>
                                     <button id="btn-screenshot" onClick={handleScreenshot} className="flex-1 bg-emerald-600 text-white py-4 md:py-6 rounded-2xl md:rounded-3xl font-black text-lg md:text-2xl shadow-lg hover:bg-emerald-500 transition-all flex items-center justify-center gap-2 md:gap-3 active:scale-95">
                                         <Icons.Camera /> 彩色圖檔 (傳LINE用)
                                     </button>
@@ -1388,7 +1409,7 @@
                             )}
                         </>
                     )}
-                    {screenshotUrl && <div className="modal-overlay" style={{zIndex:10030}}><div className="bg-white rounded-2xl p-4 max-w-3xl w-full max-h-[95vh] overflow-auto"><button className="font-bold p-2" onClick={()=>setScreenshotUrl(null)}>關閉圖檔預覽</button><p>可長按圖片儲存，或使用下載按鈕。</p><a className="text-sky-700 font-bold" href={screenshotUrl} download="葳葳海鮮.png">下載 PNG</a><img className="w-full mt-3" src={screenshotUrl} alt="產生的圖檔預覽" /></div></div>}
+                    {screenshotUrl && <div className="modal-overlay" style={{zIndex:10030}}><div className="bg-white rounded-2xl p-4 max-w-3xl w-full max-h-[95vh] overflow-auto"><div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3"><button onClick={savePreparedImage} className="text-center bg-emerald-700 text-white text-xl font-black px-5 py-4 rounded-xl">⬇ 儲存到照片圖庫／下載 PNG</button><button className="bg-slate-200 text-slate-800 text-lg font-black px-5 py-4 rounded-xl" onClick={()=>{setScreenshotUrl(null);setScreenshotBlob(null);}}>← 返回系統繼續操作</button></div><p className="text-base font-bold text-slate-600">手機或平板：按綠色按鈕後，在分享選單選擇「儲存影像」。若裝置沒有分享功能，也可以長按下方圖片儲存。</p><img className="w-full mt-3" src={screenshotUrl} alt="產生的圖檔預覽" /></div></div>}
                 </div>
             );
         }
